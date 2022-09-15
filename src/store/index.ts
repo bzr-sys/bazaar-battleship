@@ -78,11 +78,17 @@ export default createStore({
             tableName: HOSTED_GAMES_TABLE_NAME,
             userId: "*",
             type: "read",
+            condition: {
+              matchUserId: "id",
+            },
           },
           {
             tableName: HOSTED_GAMES_TABLE_NAME,
             userId: "*",
             type: "update",
+            condition: {
+              matchUserId: "id",
+            },
           },
         ]);
         console.log("permissionResponse", permissionResponse);
