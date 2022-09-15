@@ -18,8 +18,8 @@ const config = {
     //store.dispatch("autoSignIn");
   },
 
-  rethinkIdBaseUri: "http://localhost:4444",
-  socketioUri: "http://localhost:4000",
+  oAuthUri: "http://localhost:4444",
+  dataApiUri: "http://localhost:4000",
 };
 
 export const rid = new RethinkID(config);
