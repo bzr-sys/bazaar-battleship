@@ -179,6 +179,7 @@ export default defineComponent({
       // TODO define any
       if (g.error) {
         console.log("Got error instead of game:", g.error);
+        return;
       }
       game.value = g.data as Game;
 
@@ -434,46 +435,43 @@ export default defineComponent({
     };
 
     const completeSetup: () => void = () => {
-      if (isHost) {
-        game.value.status.hostSetup = true;
+      let gameUpdate = {
+        id: guestId.value,
+      } as any;
 
-        // Update config and status
-        rid.tableUpdate(HOSTED_GAMES_TABLE_NAME, {
-          id: guestId.value,
-          config: {
-            hostUnset: game.value.config.hostUnset,
-            hostShips: game.value.config.hostShips,
-          },
-          status: {
-            hostSetup: true,
-          },
-        });
+      if (isHost) {
+        gameUpdate["config"] = {
+          hostUnset: game.value.config.hostUnset,
+          hostShips: game.value.config.hostShips,
+        };
+        gameUpdate["status"] = { hostSetup: true };
       } else {
         // isGuest
-        game.value.status.guestSetup = true;
-
-        // Update config and status
-        rid.tableUpdate(
-          HOSTED_GAMES_TABLE_NAME,
-          {
-            id: guestId.value,
-            config: {
-              guestUnset: game.value.config.guestUnset,
-              guestShips: game.value.config.guestShips,
-            },
-            status: {
-              guestSetup: true,
-            },
-          },
-          { userId: hostId.value },
-        );
+        gameUpdate["config"] = {
+          guestUnset: game.value.config.guestUnset,
+          guestShips: game.value.config.guestShips,
+        };
+        gameUpdate["status"] = { guestSetup: true };
       }
 
-      rid
-        .tableSubscribe(HOSTED_GAMES_TABLE_NAME, { rowId: guestId.value, userId: hostId.value }, updateGame)
-        .then((u) => {
-          unsubscribe = u;
-        });
+      // Update config and status
+      rid.tableUpdate(HOSTED_GAMES_TABLE_NAME, gameUpdate, { userId: hostId.value }).then(() => {
+        rid
+          .tableSubscribe(HOSTED_GAMES_TABLE_NAME, { rowId: guestId.value, userId: hostId.value }, updateGame)
+          .then((u) => {
+            unsubscribe = u;
+
+            // Update current game since other player might also have completed setup
+            rid.tableRead(HOSTED_GAMES_TABLE_NAME, { rowId: guestId.value, userId: hostId.value }).then((g: any) => {
+              // TODO define any
+              if (g.error) {
+                console.log("Got error instead of game:", g.error);
+                return;
+              }
+              game.value = g.data as Game;
+            });
+          });
+      });
     };
 
     const disabledBomb: (ri: number, ci: number) => boolean = (ri, ci) => {
