@@ -12,11 +12,6 @@ const config = {
     // @ts-ignore
     this.logOut();
   },
-  onLogin: function () {
-    console.log("onLogin is called");
-    // TODO is there a good way to do this?
-    //store.dispatch("autoSignIn");
-  },
 
   oAuthUri: "http://localhost:4444",
   dataApiUri: "http://localhost:4000",
