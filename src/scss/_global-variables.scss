@@ -1,0 +1,13 @@
+// This file loads global variables via config in vue.config.js
+
+// ONLY variables must be included, not styles.
+// Styles would be output for every component causing huge amounts of duplication.
+
+// Override Bulma defaults here
+// ...
+
+// Bulma global variables and utilities
+@import "~bulma/sass/utilities/_all.sass";
+
+$background: teal;
+$white: #fff;

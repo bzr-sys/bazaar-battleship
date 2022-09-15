@@ -1,30 +1,67 @@
 <template>
-  <div id="nav">
-    <router-link to="/">Home</router-link> |
-    <router-link to="/about">About</router-link>
-  </div>
-  <router-view />
+  <AppNav />
+  <router-view v-if="loaded" :aria-hidden="isModalOpen" />
+  <div class="loading" v-else>Loading...</div>
+  <AppServiceWorkerNotification />
 </template>
 
+<script lang="ts">
+import { defineComponent, computed } from "vue";
+import { useStore } from "vuex";
+import useModals from "@/composables/modals";
+import AppNav from "@/components/AppNav.vue";
+import AppServiceWorkerNotification from "@/components/AppServiceWorkerNotification.vue";
+
+export default defineComponent({
+  name: "App",
+  components: {
+    AppNav,
+    AppServiceWorkerNotification,
+  },
+  setup() {
+    const store = useStore();
+
+    const loaded = computed(() => store.state.loaded);
+
+    store.dispatch("autoSignIn");
+
+    const { isModalOpen } = useModals;
+
+    return { isModalOpen, loaded };
+  },
+});
+</script>
+
 <style lang="scss">
+@import "~normalize.css/normalize.css";
+@import "~bulma/bulma.sass";
+
+// apply a natural box layout model to all elements, but allowing components to change
+html {
+  background: hsl(189, 50%, 80%);
+  box-sizing: border-box;
+}
+
+*,
+*:before,
+*:after {
+  box-sizing: inherit;
+}
+
 #app {
   font-family: Avenir, Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  text-align: center;
   color: #2c3e50;
 }
 
-#nav {
-  padding: 30px;
+.small-container {
+  margin: 0 auto;
+  max-width: 440px;
+}
 
-  a {
-    font-weight: bold;
-    color: #2c3e50;
-
-    &.router-link-exact-active {
-      color: #42b983;
-    }
-  }
+.loading {
+  color: white;
+  padding: 1em;
 }
 </style>
