@@ -1,7 +1,6 @@
 <template>
   <div class="board">
     <div v-if="!authenticated">
-      <!-- <a class="button is-primary" :href="loginUri">Sign in or create an account</a> -->
       <button @click="login" class="button is-primary">Sign in or create an account</button>
     </div>
     <template v-else>
@@ -56,12 +55,6 @@ export default defineComponent({
     const store = useStore();
     const router = useRouter();
 
-    const loginUri = ref("");
-
-    (async () => {
-      loginUri.value = await rid.loginUri();
-    })();
-
     const authenticated = computed(() => store.state.authenticated);
     const hostedGames = computed(() => store.state.hostedGames);
     const invitedGames = computed(() => store.state.invitedGames);
@@ -75,7 +68,7 @@ export default defineComponent({
       router.push({ name: "game", params: { hostId, guestId } });
     }
 
-    return { loginUri, authenticated, hostedGames, invitedGames, userId, goToGame, login };
+    return { authenticated, hostedGames, invitedGames, userId, goToGame, login };
   },
 });
 </script>

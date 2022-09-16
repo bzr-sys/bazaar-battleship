@@ -69,10 +69,6 @@ export default createStore({
         // TODO RETHINKID: tableCreate with permissions
         const createResponse = await rid.tablesCreate(HOSTED_GAMES_TABLE_NAME);
         console.log("createResponse", createResponse);
-        // TODO RETHINKID:
-        // * wildcard userId
-        // * complex type vs multiple permissions?
-        // * conditions guest.id == userId
         const permissionResponse = await rid.permissionsSet([
           {
             tableName: HOSTED_GAMES_TABLE_NAME,
