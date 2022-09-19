@@ -19,4 +19,6 @@ module.exports = {
       navigateFallback: "index.html",
     },
   },
+  // GitHub pages config
+  publicPath: "/rethinkid-battleship/",
 };
