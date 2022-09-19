@@ -60,6 +60,10 @@ export default defineComponent({
     const invitedGames = computed(() => store.state.invitedGames);
     const userId = computed(() => store.state.user.id);
 
+    rid.loginUri().then((uri) => {
+      console.log(uri);
+    });
+
     function login(): void {
       rid.login();
     }
