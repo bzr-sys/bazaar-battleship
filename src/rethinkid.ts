@@ -1,7 +1,8 @@
 import RethinkID from "@mostlytyped/rethinkid-js-sdk";
 import { Options } from "@mostlytyped/rethinkid-js-sdk/dist/types/types";
 
-const baseURL = window.location.origin;
+// e.g., https://mostlytyped.github.io/rethinkid-battleship/
+const baseURL = window.location.origin + window.location.pathname;
 
 console.log("app id", process.env.VUE_APP_APP_ID);
 
