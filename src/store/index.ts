@@ -15,6 +15,40 @@ const state: State = {
   },
   hostedGames: [],
   invitedGames: [],
+
+  hostedGamesTable: rid.table(HOSTED_GAMES_TABLE_NAME, async () => {
+    await rid.permissionsSet([
+      {
+        tableName: HOSTED_GAMES_TABLE_NAME,
+        userId: "*",
+        type: "read",
+        condition: {
+          matchUserId: "id",
+        },
+      },
+      {
+        tableName: HOSTED_GAMES_TABLE_NAME,
+        userId: "*",
+        type: "update",
+        condition: {
+          matchUserId: "id",
+        },
+      },
+    ]);
+    return;
+  }),
+  invitedGamesTable: rid.table(INVITED_GAMES_TABLE_NAME, async () => {
+    await rid.permissionsSet([
+      {
+        tableName: INVITED_GAMES_TABLE_NAME,
+        userId: "*",
+        type: "insert",
+        condition: {
+          matchUserId: "id",
+        },
+      },
+    ]);
+  }),
 };
 
 export default createStore({
@@ -56,61 +90,24 @@ export default createStore({
         commit("SET_LOADED", true);
       }
     },
-    async fetchHostedGames({ commit }): Promise<void> {
+    async fetchHostedGames({ state, commit }): Promise<void> {
+      console.log("fetchHostedGames");
       try {
-        console.log("fetchHostedGames");
-        // Get all from 'hosted_games'tables
-        const readResponse = await rid.tableRead(HOSTED_GAMES_TABLE_NAME);
+        const readResponse = await state.hostedGamesTable.read();
         commit("SET_HOSTED_GAMES", readResponse.data);
         console.log("readResponse", readResponse);
-      } catch (e: any) {
-        console.log("fetchHostedGames error", e);
-        // Assume table doesn't exist
-        // TODO RETHINKID: tableCreate with permissions
-        const createResponse = await rid.tablesCreate(HOSTED_GAMES_TABLE_NAME);
-        console.log("createResponse", createResponse);
-        const permissionResponse = await rid.permissionsSet([
-          {
-            tableName: HOSTED_GAMES_TABLE_NAME,
-            userId: "*",
-            type: "read",
-            condition: {
-              matchUserId: "id",
-            },
-          },
-          {
-            tableName: HOSTED_GAMES_TABLE_NAME,
-            userId: "*",
-            type: "update",
-            condition: {
-              matchUserId: "id",
-            },
-          },
-        ]);
-        console.log("permissionResponse", permissionResponse);
+      } catch (err) {
+        console.log("Error reading table:", err);
       }
     },
-    async fetchInvitedGames({ commit }): Promise<void> {
+    async fetchInvitedGames({ state, commit }): Promise<void> {
+      console.log("fetchInvitedGames");
       try {
-        console.log("fetchInvitedGames");
-        // Get all from 'invited_games'tables
-        const readResponse = await rid.tableRead(INVITED_GAMES_TABLE_NAME);
+        const readResponse = await state.invitedGamesTable.read();
         commit("SET_INVITED_GAMES", readResponse.data);
         console.log("readResponse", readResponse);
-      } catch (e: any) {
-        console.log("fetchInvitedGames error", e);
-        // Assume table doesn't exist
-        const createResponse = await rid.tablesCreate(INVITED_GAMES_TABLE_NAME);
-        console.log("createResponse", createResponse);
-        // TODO RETHINKID: how to avoid spam?
-        const permissionResponse = await rid.permissionsSet([
-          {
-            tableName: INVITED_GAMES_TABLE_NAME,
-            userId: "*",
-            type: "insert",
-          },
-        ]);
-        console.log("permissionResponse", permissionResponse);
+      } catch (err) {
+        console.log("Error reading table:", err);
       }
     },
     async createGame({ commit, state }, userId: string): Promise<boolean> {
@@ -155,7 +152,7 @@ export default createStore({
           finished: false,
         },
       };
-      const response = await rid.tableInsert(HOSTED_GAMES_TABLE_NAME, game);
+      const response = state.hostedGamesTable.insert(game);
       console.log("create game response", response);
       commit("CREATE_GAME", game);
       return true;

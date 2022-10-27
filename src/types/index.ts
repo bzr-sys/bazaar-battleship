@@ -1,4 +1,3 @@
-import { CallExpression } from "@babel/types";
 import { Table } from "@mostlytyped/rethinkid-js-sdk/dist/types/table";
 
 export type State = {
@@ -7,6 +6,9 @@ export type State = {
   user: User;
   hostedGames: Game[];
   invitedGames: User[];
+
+  hostedGamesTable: Table;
+  invitedGamesTable: Table;
 };
 
 export type User = {

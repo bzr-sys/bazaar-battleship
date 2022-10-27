@@ -95,7 +95,7 @@ import useRouterParams from "@/composables/router-params";
 import { Game } from "@/types";
 
 import { rid } from "@/rethinkid";
-import { MessageOrError, SubscribeListener } from "@mostlytyped/rethinkid-js-sdk/dist/types/types";
+import { Message, SubscribeListener } from "@mostlytyped/rethinkid-js-sdk/dist/types/types";
 
 export default defineComponent({
   name: "Game",
@@ -159,7 +159,7 @@ export default defineComponent({
     const currentRow = ref(-1);
     const currentCol = ref(-1);
 
-    let unsubscribe: (() => Promise<MessageOrError>) | undefined;
+    let unsubscribe: (() => Promise<Message>) | undefined;
 
     const updateGame: SubscribeListener = (changes) => {
       const old_game = changes.old_val as Game;
@@ -175,23 +175,26 @@ export default defineComponent({
     };
 
     // Get game
-    rid.tableRead(HOSTED_GAMES_TABLE_NAME, { rowId: guestId.value, userId: hostId.value }).then((g: any) => {
-      // TODO define any
-      if (g.error) {
-        console.log("Got error instead of game:", g.error);
-        return;
-      }
-      game.value = g.data as Game;
+    rid
+      .tableRead(HOSTED_GAMES_TABLE_NAME, { rowId: guestId.value, userId: hostId.value })
+      .then((g: any) => {
+        game.value = g.data as Game;
 
-      // Subscribe to more if setup complete
-      if ((isHost && game.value.status.hostSetup) || (!isHost && game.value.status.guestSetup)) {
-        rid
-          .tableSubscribe(HOSTED_GAMES_TABLE_NAME, { rowId: guestId.value, userId: hostId.value }, updateGame)
-          .then((u) => {
-            unsubscribe = u;
-          });
-      }
-    });
+        // Subscribe to more if setup complete
+        if ((isHost && game.value.status.hostSetup) || (!isHost && game.value.status.guestSetup)) {
+          rid
+            .tableSubscribe(HOSTED_GAMES_TABLE_NAME, { rowId: guestId.value, userId: hostId.value }, updateGame)
+            .then((u) => {
+              unsubscribe = u;
+            })
+            .catch((err) => {
+              console.log("Got error:", err);
+            });
+        }
+      })
+      .catch((err) => {
+        console.log("Got error instead of game:", err);
+      });
 
     // 0: Empty
     // 1: Ship
@@ -455,23 +458,31 @@ export default defineComponent({
       }
 
       // Update config and status
-      rid.tableUpdate(HOSTED_GAMES_TABLE_NAME, gameUpdate, { userId: hostId.value }).then(() => {
-        rid
-          .tableSubscribe(HOSTED_GAMES_TABLE_NAME, { rowId: guestId.value, userId: hostId.value }, updateGame)
-          .then((u) => {
-            unsubscribe = u;
+      rid
+        .tableUpdate(HOSTED_GAMES_TABLE_NAME, gameUpdate, { userId: hostId.value })
+        .then(() => {
+          rid
+            .tableSubscribe(HOSTED_GAMES_TABLE_NAME, { rowId: guestId.value, userId: hostId.value }, updateGame)
+            .then((u) => {
+              unsubscribe = u;
 
-            // Update current game since other player might also have completed setup
-            rid.tableRead(HOSTED_GAMES_TABLE_NAME, { rowId: guestId.value, userId: hostId.value }).then((g: any) => {
-              // TODO define any
-              if (g.error) {
-                console.log("Got error instead of game:", g.error);
-                return;
-              }
-              game.value = g.data as Game;
+              // Update current game since other player might also have completed setup
+              rid
+                .tableRead(HOSTED_GAMES_TABLE_NAME, { rowId: guestId.value, userId: hostId.value })
+                .then((g: any) => {
+                  game.value = g.data as Game;
+                })
+                .catch((err) => {
+                  console.log("Got error instead of game:", err);
+                });
+            })
+            .catch((err) => {
+              console.log("Got error:", err);
             });
-          });
-      });
+        })
+        .catch((err) => {
+          console.log("Got error:", err);
+        });
     };
 
     const disabledBomb: (ri: number, ci: number) => boolean = (ri, ci) => {
@@ -519,7 +530,9 @@ export default defineComponent({
         }
       }
 
-      rid.tableUpdate(HOSTED_GAMES_TABLE_NAME, game.value, { userId: hostId.value });
+      rid.tableUpdate(HOSTED_GAMES_TABLE_NAME, game.value, { userId: hostId.value }).catch((err) => {
+        console.log("Got error:", err);
+      });
     };
 
     const startNewGame: () => void = () => {
@@ -536,7 +549,9 @@ export default defineComponent({
       game.value.status.hostSetup = false;
       game.value.status.guestSetup = false;
       game.value.status.finished = false;
-      rid.tableUpdate(HOSTED_GAMES_TABLE_NAME, game.value, { userId: hostId.value });
+      rid.tableUpdate(HOSTED_GAMES_TABLE_NAME, game.value, { userId: hostId.value }).catch((err) => {
+        console.log("Got error:", err);
+      });
     };
 
     return {
