@@ -1,4 +1,4 @@
-import { Table } from "@mostlytyped/rethinkid-js-sdk/dist/types/table";
+import { AcceptedInvitation, Invitation, ReceivedInvitation, TableAPI } from "@mostlytyped/rethinkid-js-sdk/dist/types";
 
 export type State = {
   loaded: boolean;
@@ -7,8 +7,12 @@ export type State = {
   hostedGames: Game[];
   invitedGames: User[];
 
-  hostedGamesTable: Table;
-  invitedGamesTable: Table;
+  hostedGamesTable: TableAPI;
+  invitedGamesTable: TableAPI;
+
+  invitations: Invitation[];
+  receivedInvitations: ReceivedInvitation[];
+  acceptedInvitations: AcceptedInvitation[];
 };
 
 export type User = {

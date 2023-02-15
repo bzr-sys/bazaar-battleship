@@ -5,7 +5,28 @@
     </div>
     <template v-else>
       <div class="columns-grid" aria-live="polite">
-        <GameCreate />
+        <div>
+          <GameCreate />
+
+          <div>
+            <h2 class="title">Sent invitations</h2>
+            <div v-for="invitation in invitations" :key="invitation.id" class="card">
+              <div class="card-content">
+                <h2 class="title is-4">{{ invitation.userId }}</h2>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <h2 class="title">Received invitations</h2>
+            <div v-for="invitation in receivedInvitations" :key="invitation.id" class="card">
+              <div class="card-content">
+                <h2 class="title is-4">{{ invitation.hostId }}</h2>
+                <button class="button" @click="acceptInvitation(invitation)">Accept</button>
+              </div>
+            </div>
+          </div>
+        </div>
         <div>
           <h2 class="title">Hosted Games</h2>
           <div
@@ -24,13 +45,13 @@
           <h2 class="title">Invited Games</h2>
           <div
             v-for="game in invitedGames"
-            :key="game.id"
+            :key="game.userId"
             class="card is-clickable"
             role="button"
-            @click="goToGame(game.id, userId)"
+            @click="goToGame(game.userId, userId)"
           >
             <div class="card-content">
-              <h2 class="title is-4">{{ game.id }}</h2>
+              <h2 class="title is-4">{{ game.userId }}</h2>
             </div>
           </div>
         </div>
@@ -40,11 +61,12 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, computed } from "vue";
+import { defineComponent, computed } from "vue";
 import { useStore } from "vuex";
 import { useRouter } from "vue-router";
 import GameCreate from "@/components/GameCreate.vue";
 import { rid } from "@/rethinkid";
+import { ReceivedInvitation } from "@mostlytyped/rethinkid-js-sdk/dist/types/types";
 
 export default defineComponent({
   name: "Games",
@@ -58,11 +80,9 @@ export default defineComponent({
     const authenticated = computed(() => store.state.authenticated);
     const hostedGames = computed(() => store.state.hostedGames);
     const invitedGames = computed(() => store.state.invitedGames);
+    const invitations = computed(() => store.state.invitations);
+    const receivedInvitations = computed(() => store.state.receivedInvitations);
     const userId = computed(() => store.state.user.id);
-
-    rid.loginUri().then((uri) => {
-      console.log(uri);
-    });
 
     function login(): void {
       rid.login();
@@ -72,7 +92,21 @@ export default defineComponent({
       router.push({ name: "game", params: { hostId, guestId } });
     }
 
-    return { authenticated, hostedGames, invitedGames, userId, goToGame, login };
+    function acceptInvitation(invitation: ReceivedInvitation): void {
+      store.dispatch("acceptInvitation", invitation);
+    }
+
+    return {
+      authenticated,
+      hostedGames,
+      invitedGames,
+      invitations,
+      receivedInvitations,
+      userId,
+      goToGame,
+      acceptInvitation,
+      login,
+    };
   },
 });
 </script>

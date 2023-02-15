@@ -1,6 +1,7 @@
 import { createStore } from "vuex";
 import { State, User, Game } from "@/types";
 import { rid } from "@/rethinkid";
+import { AcceptedInvitation, Invitation, ReceivedInvitation } from "@mostlytyped/rethinkid-js-sdk/dist/types/types";
 
 const HOSTED_GAMES_TABLE_NAME = "hosted_games";
 const INVITED_GAMES_TABLE_NAME = "invited_games";
@@ -16,38 +17,46 @@ const state: State = {
   hostedGames: [],
   invitedGames: [],
 
-  hostedGamesTable: rid.table(HOSTED_GAMES_TABLE_NAME, async () => {
-    await rid.permissionsSet([
-      {
-        tableName: HOSTED_GAMES_TABLE_NAME,
-        userId: "*",
-        type: "read",
-        condition: {
-          matchUserId: "id",
+  invitations: [],
+  receivedInvitations: [],
+  acceptedInvitations: [],
+
+  hostedGamesTable: rid.table(HOSTED_GAMES_TABLE_NAME, {
+    onCreate: async () => {
+      await rid.permissions.set([
+        {
+          tableName: HOSTED_GAMES_TABLE_NAME,
+          userId: "*",
+          type: "read",
+          condition: {
+            matchUserId: "id",
+          },
         },
-      },
-      {
-        tableName: HOSTED_GAMES_TABLE_NAME,
-        userId: "*",
-        type: "update",
-        condition: {
-          matchUserId: "id",
+        {
+          tableName: HOSTED_GAMES_TABLE_NAME,
+          userId: "*",
+          type: "update",
+          condition: {
+            matchUserId: "id",
+          },
         },
-      },
-    ]);
-    return;
+      ]);
+      return;
+    },
   }),
-  invitedGamesTable: rid.table(INVITED_GAMES_TABLE_NAME, async () => {
-    await rid.permissionsSet([
-      {
-        tableName: INVITED_GAMES_TABLE_NAME,
-        userId: "*",
-        type: "insert",
-        condition: {
-          matchUserId: "id",
+  invitedGamesTable: rid.table(INVITED_GAMES_TABLE_NAME, {
+    onCreate: async () => {
+      await rid.permissions.set([
+        {
+          tableName: INVITED_GAMES_TABLE_NAME,
+          userId: "*",
+          type: "insert",
+          condition: {
+            matchUserId: "id",
+          },
         },
-      },
-    ]);
+      ]);
+    },
   }),
 };
 
@@ -67,8 +76,22 @@ export default createStore({
     SET_INVITED_GAMES(state, games: User[]) {
       state.invitedGames = games;
     },
+    SET_INVITATIONS(state, invitations: Invitation[]) {
+      state.invitations = invitations;
+    },
     CREATE_GAME(state, game: Game) {
       state.hostedGames.push(game);
+    },
+    APPEND_RECEIVED_INVITATION(state, inv: ReceivedInvitation) {
+      state.receivedInvitations.push(inv);
+    },
+    REMOVE_RECEIVED_INVITATION(state, id: string) {
+      const index = state.receivedInvitations.findIndex((i) => {
+        return i.id == id;
+      });
+      if (index > -1) {
+        state.receivedInvitations.splice(index, 1);
+      }
     },
   },
   actions: {
@@ -81,6 +104,19 @@ export default createStore({
 
           await dispatch("fetchHostedGames");
           await dispatch("fetchInvitedGames");
+          await dispatch("fetchInvitations");
+
+          rid.invitations.onReceived((req: ReceivedInvitation) => {
+            console.log("onReceivedInvitations");
+            dispatch("addReceivedInvitation", req);
+          });
+          rid.invitations.onAccepted((inv: AcceptedInvitation) => {
+            console.log("onAcceptedInvitations");
+            // TODO check game does not exist yet
+            dispatch("createGame", inv.userId);
+            rid.invitations.handleAccepted(inv.id);
+            dispatch("fetchInvitations");
+          });
 
           commit("SET_LOADED", true);
         } catch (e: any) {
@@ -90,11 +126,14 @@ export default createStore({
         commit("SET_LOADED", true);
       }
     },
+    async addReceivedInvitation({ commit }, inv: ReceivedInvitation) {
+      commit("APPEND_RECEIVED_INVITATION", inv);
+    },
     async fetchHostedGames({ state, commit }): Promise<void> {
       console.log("fetchHostedGames");
       try {
         const readResponse = await state.hostedGamesTable.read();
-        commit("SET_HOSTED_GAMES", readResponse.data);
+        commit("SET_HOSTED_GAMES", readResponse);
         console.log("readResponse", readResponse);
       } catch (err) {
         console.log("Error reading table:", err);
@@ -104,22 +143,46 @@ export default createStore({
       console.log("fetchInvitedGames");
       try {
         const readResponse = await state.invitedGamesTable.read();
-        commit("SET_INVITED_GAMES", readResponse.data);
+        commit("SET_INVITED_GAMES", readResponse);
         console.log("readResponse", readResponse);
       } catch (err) {
         console.log("Error reading table:", err);
       }
     },
-    async createGame({ commit, state }, userId: string): Promise<boolean> {
+    async fetchInvitations({ state, commit }): Promise<void> {
+      console.log("fetchInvitations");
       try {
-        // TODO RETHINKID: this will fail if target user does not use app (DB does not exist)
-        const response = await rid.tableInsert(INVITED_GAMES_TABLE_NAME, state.user, { userId: userId });
-        console.log("send invitation response", response);
-      } catch (e: any) {
-        console.log("failed to create game (invitation):", e);
-        // probably the user does not use the app, or already exists
-        return false;
+        const invitations = await rid.invitations.list();
+        commit("SET_INVITATIONS", invitations);
+        console.log("readResponse", invitations);
+      } catch (err) {
+        console.log("Error reading table:", err);
       }
+    },
+    async inviteUser({ dispatch }, userId: string): Promise<any> {
+      console.log("inviteUser");
+      try {
+        const invitationResponse = await rid.invitations.inviteUser(userId, {});
+        console.log("invitationResponse", invitationResponse);
+        dispatch("fetchInvitations");
+      } catch (err) {
+        console.log("Error reading table:", err);
+      }
+    },
+    async acceptInvitation({ commit, dispatch }, invitation: ReceivedInvitation): Promise<any> {
+      console.log("acceptInvitation:", invitation);
+      try {
+        const response = await rid.table(INVITED_GAMES_TABLE_NAME).insert({ userId: invitation.hostId });
+        const acceptResponse = await rid.invitations.acceptReceived(invitation.id);
+        await rid.invitations.deleteReceived(invitation.id);
+        commit("REMOVE_RECEIVED_INVITATION", invitation.id);
+        dispatch("fetchInvitedGames");
+        console.log("acceptResponse", acceptResponse);
+      } catch (err) {
+        console.log("Error accepting invitation:", err);
+      }
+    },
+    async createGame({ commit, state }, userId: string): Promise<boolean> {
       const allShips = ["carrier", "battleship", "destroyer", "submarine", "patrol_boat"];
       const allFalse = Array(10).fill(Array(10).fill(false));
       // TODO RETHINKID: contacts, invite by email address

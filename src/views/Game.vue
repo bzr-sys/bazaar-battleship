@@ -90,7 +90,7 @@
 <script lang="ts">
 import { defineComponent, computed, ComputedRef, ref } from "vue";
 import { useStore } from "vuex";
-import { useRoute, useRouter } from "vue-router";
+import { useRoute } from "vue-router";
 import useRouterParams from "@/composables/router-params";
 import { Game } from "@/types";
 
@@ -102,7 +102,6 @@ export default defineComponent({
   setup() {
     const store = useStore();
     const route = useRoute();
-    const router = useRouter();
     const { getStringFromParam } = useRouterParams;
 
     const userId = computed(() => store.state.user.id);
@@ -112,7 +111,7 @@ export default defineComponent({
 
     // TODO should be defined somewhere common and imported
     const HOSTED_GAMES_TABLE_NAME = "hosted_games";
-    const INVITED_GAMES_TABLE_NAME = "invited_games";
+    // const INVITED_GAMES_TABLE_NAME = "invited_games";
     const allShips = ["carrier", "battleship", "destroyer", "submarine", "patrol_boat"];
     const allFalse = Array(10).fill(Array(10).fill(false));
     const shipSizeMap = {
@@ -174,16 +173,20 @@ export default defineComponent({
       }
     };
 
+    // Hosted game table
+    const hostedGame = rid.table(HOSTED_GAMES_TABLE_NAME, { userId: hostId.value });
+
     // Get game
-    rid
-      .tableRead(HOSTED_GAMES_TABLE_NAME, { rowId: guestId.value, userId: hostId.value })
+    hostedGame
+      .read({ rowId: guestId.value })
       .then((g: any) => {
-        game.value = g.data as Game;
+        console.log("got game:", g);
+        game.value = g as Game;
 
         // Subscribe to more if setup complete
         if ((isHost && game.value.status.hostSetup) || (!isHost && game.value.status.guestSetup)) {
-          rid
-            .tableSubscribe(HOSTED_GAMES_TABLE_NAME, { rowId: guestId.value, userId: hostId.value }, updateGame)
+          hostedGame
+            .subscribe({ rowId: guestId.value }, updateGame)
             .then((u) => {
               unsubscribe = u;
             })
@@ -458,19 +461,19 @@ export default defineComponent({
       }
 
       // Update config and status
-      rid
-        .tableUpdate(HOSTED_GAMES_TABLE_NAME, gameUpdate, { userId: hostId.value })
+      hostedGame
+        .update(gameUpdate)
         .then(() => {
-          rid
-            .tableSubscribe(HOSTED_GAMES_TABLE_NAME, { rowId: guestId.value, userId: hostId.value }, updateGame)
+          hostedGame
+            .subscribe({ rowId: guestId.value }, updateGame)
             .then((u) => {
               unsubscribe = u;
 
               // Update current game since other player might also have completed setup
-              rid
-                .tableRead(HOSTED_GAMES_TABLE_NAME, { rowId: guestId.value, userId: hostId.value })
+              hostedGame
+                .read({ rowId: guestId.value })
                 .then((g: any) => {
-                  game.value = g.data as Game;
+                  game.value = g as Game;
                 })
                 .catch((err) => {
                   console.log("Got error instead of game:", err);
@@ -530,7 +533,7 @@ export default defineComponent({
         }
       }
 
-      rid.tableUpdate(HOSTED_GAMES_TABLE_NAME, game.value, { userId: hostId.value }).catch((err) => {
+      hostedGame.update(game.value).catch((err) => {
         console.log("Got error:", err);
       });
     };
@@ -549,7 +552,7 @@ export default defineComponent({
       game.value.status.hostSetup = false;
       game.value.status.guestSetup = false;
       game.value.status.finished = false;
-      rid.tableUpdate(HOSTED_GAMES_TABLE_NAME, game.value, { userId: hostId.value }).catch((err) => {
+      hostedGame.update(game.value).catch((err) => {
         console.log("Got error:", err);
       });
     };

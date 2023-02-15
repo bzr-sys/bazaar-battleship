@@ -5,9 +5,9 @@ import store from "./store";
 import { rid } from "@/rethinkid";
 // import "./registerServiceWorker";
 
-rid.onLogin = () => {
+rid.onLogin(() => {
   console.log("onLogin is called");
   store.dispatch("autoSignIn");
-};
+});
 
 createApp(App).use(store).use(router).mount("#app");

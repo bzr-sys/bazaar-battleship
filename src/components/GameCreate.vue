@@ -1,5 +1,5 @@
 <template>
-  <form @submit.prevent="submitCreateGame">
+  <form @submit.prevent="submitInviteUser">
     <h2 class="title">New Game</h2>
     <div class="field mt-4">
       <label class="label is-sr-only" for="add-board-input">User ID</label>
@@ -15,7 +15,7 @@
         />
       </div>
     </div>
-    <button class="button" type="submit">Create game</button>
+    <button class="button" type="submit">Invite</button>
   </form>
 </template>
 
@@ -30,8 +30,8 @@ export default defineComponent({
     };
   },
   methods: {
-    async submitCreateGame(): Promise<void> {
-      await this.$store.dispatch("createGame", this.userId);
+    async submitInviteUser(): Promise<void> {
+      await this.$store.dispatch("inviteUser", this.userId);
       this.userId = "";
     },
   },
