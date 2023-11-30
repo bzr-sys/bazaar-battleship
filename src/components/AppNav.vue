@@ -1,51 +1,36 @@
 <template>
-  <nav class="navbar mb-4" role="navigation" aria-label="main navigation">
-    <div class="navbar-brand">
-      <router-link class="navbar-item" :to="{ name: 'home' }"> Battleship </router-link>
-      <a role="button" class="navbar-burger" aria-label="menu" aria-expanded="false" data-target="nav">
-        <span aria-hidden="true"></span>
-        <span aria-hidden="true"></span>
-        <span aria-hidden="true"></span>
-      </a>
-    </div>
+  <div class="py-4 bg-indigo-300 text-white">
+    <nav class="flex gap-4" role="navigation" aria-label="main navigation">
+      <div class="">
+        <router-link class="" :to="{ name: 'home' }"> Battleship </router-link>
+        <a role="button" class="" aria-label="menu" aria-expanded="false" data-target="nav">
+          <span aria-hidden="true"></span>
+          <span aria-hidden="true"></span>
+          <span aria-hidden="true"></span>
+        </a>
+      </div>
 
-    <div id="nav" class="navbar-menu">
-      <div class="navbar-start"></div>
+      <div id="nav" class="flex justify-between w-full">
+        <!-- Navbar start -->
+        <div class=""></div>
 
-      <div class="navbar-end">
-        <div class="navbar-item">
-          <div class="buttons">
-            <template v-if="authenticated">
-              <div class="button">{{ user.email }}</div>
-              <button class="button" @click="signOut">Sign out</button>
-            </template>
-          </div>
+        <!-- Navbar end -->
+        <div v-if="store.authenticated" class="flex gap-4">
+          <div class="">{{ store.user.name }} ({{ store.user.email }}) - {{ store.user.id }}</div>
+          <button class="" @click="signOut">Sign out</button>
         </div>
       </div>
-    </div>
-  </nav>
+    </nav>
+  </div>
 </template>
 
-<script lang="ts">
-import { computed, defineComponent } from "vue";
-import { useStore } from "vuex";
+<script setup lang="ts">
+import { useRethinkIdStore } from "@/stores/rethinkid";
 import { rid } from "@/rethinkid";
 
-export default defineComponent({
-  name: "AppNav",
-  setup() {
-    const store = useStore();
+const store = useRethinkIdStore();
 
-    const authenticated = computed(() => store.state.authenticated);
-    const user = computed(() => store.state.user);
-
-    function signOut(): void {
-      rid.logOut();
-    }
-
-    return { authenticated, user, signOut };
-  },
-});
+function signOut(): void {
+  rid.logOut();
+}
 </script>
-
-<style scoped lang="scss"></style>

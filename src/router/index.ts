@@ -1,39 +1,23 @@
-import { createRouter, createWebHistory, RouteRecordRaw } from "vue-router";
-import Games from "../views/Games.vue";
-import Game from "../views/Game.vue";
-import NotFound from "../views/NotFound.vue";
-
+import { createRouter, createWebHistory } from "vue-router";
+import HomeView from "../views/HomeView.vue";
+import GameView from "../views/GameView.vue";
 import { rid } from "@/rethinkid";
 
-const routes: Array<RouteRecordRaw> = [
-  // {
-  //   path: "/callback",
-  //   name: "callback",
-  //   component: Callback,
-  //   meta: { requiresAuth: false },
-  // },
-
-  {
-    path: "/",
-    name: "home",
-    component: Games,
-    meta: { requiresAuth: false },
-  },
-  {
-    path: "/games/:hostId/:guestId",
-    name: "game",
-    component: Game,
-  },
-  {
-    path: "/:catchAll(.*)",
-    component: NotFound,
-    name: "notFound",
-  },
-];
-
 const router = createRouter({
-  history: createWebHistory(process.env.BASE_URL),
-  routes,
+  history: createWebHistory(import.meta.env.BASE_URL),
+  routes: [
+    {
+      path: "/",
+      name: "home",
+      component: HomeView,
+      meta: { requiresAuth: false },
+    },
+    {
+      path: "/games/:gameId",
+      name: "game",
+      component: GameView,
+    },
+  ],
 });
 
 router.beforeEach((to, from, next) => {

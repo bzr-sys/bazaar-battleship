@@ -1,28 +1,34 @@
-import { CallExpression } from "@babel/types";
-import { Table } from "@mostlytyped/rethinkid-js-sdk/dist/types/table";
+import type { Doc } from "@rethinkid/rethinkid-js-sdk";
 
-export type State = {
-  loaded: boolean;
-  authenticated: boolean;
-  user: User;
-  hostedGames: Game[];
-  invitedGames: User[];
+type GameCommon = Doc & {
+  visible: boolean;
+  lastActive: string;
+
+  name?: string; // Added by store
 };
 
-export type User = {
-  id: string;
-  email: string;
-  name: string;
-};
-
-export type Game = {
-  id: string;
-  host: string;
-  guest: User;
+export type HostedGame = GameCommon & {
+  type: "hosted";
+  guestId: string;
   config: GameConfig;
   highscore: Highscore;
   status: GameStatus;
 };
+
+export type InvitedGame = GameCommon & {
+  type: "invited";
+  hostId: string;
+  grantedPermissionId: string;
+  gameId: string;
+};
+
+export type GameLink = GameCommon & {
+  type: "link";
+  linkId: string;
+  linkUrl: string;
+};
+
+export type Game = HostedGame | InvitedGame | GameLink;
 
 export type GameConfig = {
   hostUnset: string[];
@@ -39,8 +45,6 @@ export type Highscore = {
 };
 
 export type GameStatus = {
-  hostOnline: number; // TODO RethinkID how?
-  guestOnline: number; // TODO RethinkID how?
   currentTurn: string;
   hostSetup: boolean;
   guestSetup: boolean;

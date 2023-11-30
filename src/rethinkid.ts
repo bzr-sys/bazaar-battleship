@@ -1,24 +1,24 @@
-import RethinkID from "@mostlytyped/rethinkid-js-sdk";
-import { Options } from "@mostlytyped/rethinkid-js-sdk/dist/types/types";
+import { RethinkID } from "@rethinkid/rethinkid-js-sdk";
+import type { Options } from "@rethinkid/rethinkid-js-sdk";
 
 // e.g., https://mostlytyped.github.io/rethinkid-battleship/
 const baseURL = window.location.origin + window.location.pathname;
 
-console.log("app id", process.env.VUE_APP_APP_ID);
+const appId = import.meta.env.VITE_APP_ID;
+
+console.log("app id", appId);
 
 const config: Options = {
-  appId: process.env.VUE_APP_APP_ID,
+  appId: appId,
   loginRedirectUri: `${baseURL}`,
-  dataAPIConnectErrorCallback: function () {
-    // this = RethinkID
-    // @ts-ignore
-    this.logOut();
+  onApiConnectError: async function (rid: RethinkID, message: string) {
+    console.log("OnConnectError", message);
+    rid.logOut();
   },
 };
 
-if (process.env.NODE_ENV == "development") {
-  config.oAuthUri = "http://localhost:4444";
-  config.dataApiUri = "http://localhost:4000";
+if (import.meta.env.DEV) {
+  config.rethinkIdUri = "http://localhost:3377";
 }
 
 export const rid = new RethinkID(config);

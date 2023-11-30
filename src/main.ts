@@ -1,13 +1,14 @@
+import "./assets/main.css";
+
 import { createApp } from "vue";
+import { createPinia } from "pinia";
+
 import App from "./App.vue";
 import router from "./router";
-import store from "./store";
-import { rid } from "@/rethinkid";
-// import "./registerServiceWorker";
 
-rid.onLogin = () => {
-  console.log("onLogin is called");
-  store.dispatch("autoSignIn");
-};
+const app = createApp(App);
 
-createApp(App).use(store).use(router).mount("#app");
+app.use(createPinia());
+app.use(router);
+
+app.mount("#app");
