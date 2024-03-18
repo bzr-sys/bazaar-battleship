@@ -3,7 +3,7 @@
     <div class="pt-4">
       <div v-if="!store.authenticated">
         <button @click="login" class="bg-indigo-500 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded">
-          Sign in with RethinkID
+          Sign in with Bazaar
         </button>
       </div>
 
@@ -50,10 +50,10 @@
 import { computed } from "vue";
 import { useRouter, useRoute } from "vue-router";
 
-import { useRethinkIdStore, HOSTED_GAME_TYPE, INVITED_GAME_TYPE, LINK_GAME_TYPE } from "@/stores/rethinkid";
-import { rid } from "@/rethinkid";
+import { useBazaarStore, HOSTED_GAME_TYPE, INVITED_GAME_TYPE, LINK_GAME_TYPE } from "@/stores/bazaar";
+import { bzr } from "@/bazaar";
 import GameCreate from "@/components/GameCreate.vue";
-const store = useRethinkIdStore();
+const store = useBazaarStore();
 
 const router = useRouter();
 const route = useRoute();
@@ -62,12 +62,8 @@ const visibleGames = computed(() => store.visibleGames);
 console.log(visibleGames.value);
 
 async function login(): Promise<void> {
-  // rid.auth.loginUri().then((uri) => {
-  //   console.log("URI:", uri);
-  // });
-
   try {
-    await rid.login();
+    await bzr.login();
     if (route.redirectedFrom && route.redirectedFrom.name) {
       router.push({ name: route.redirectedFrom.name });
     }

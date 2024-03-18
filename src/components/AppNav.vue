@@ -25,12 +25,12 @@
 </template>
 
 <script setup lang="ts">
-import { useRethinkIdStore } from "@/stores/rethinkid";
-import { rid } from "@/rethinkid";
+import { useBazaarStore } from "@/stores/bazaar";
+import { bzr } from "@/bazaar";
 
-const store = useRethinkIdStore();
+const store = useBazaarStore();
 
 function signOut(): void {
-  rid.logOut();
+  bzr.logOut();
 }
 </script>

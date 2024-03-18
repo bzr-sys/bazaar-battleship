@@ -1,4 +1,4 @@
-import type { Doc } from "@rethinkid/rethinkid-js-sdk";
+import type { Doc } from "@bzr/bazaar";
 
 type GameCommon = Doc & {
   visible: boolean;
@@ -29,6 +29,8 @@ export type GameLink = GameCommon & {
 };
 
 export type Game = HostedGame | InvitedGame | GameLink;
+
+export type GameType = "hosted" | "invited" | "link";
 
 export type GameConfig = {
   hostUnset: string[];

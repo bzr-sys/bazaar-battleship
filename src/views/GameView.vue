@@ -93,17 +93,17 @@ import type { ComputedRef, Ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import type { Game, InvitedGame, HostedGame } from "@/types";
 
-import { rid } from "@/rethinkid";
-import type { Message, SubscribeListener } from "@rethinkid/rethinkid-js-sdk";
+import { bzr } from "@/bazaar";
+import type { BazaarMessage, SubscribeListener } from "@bzr/bazaar";
 import {
-  useRethinkIdStore,
+  useBazaarStore,
   HOSTED_GAME_TYPE,
   INVITED_GAME_TYPE,
   GAMES_COLLECTION_NAME,
   freshGameConfig,
-} from "@/stores/rethinkid";
+} from "@/stores/bazaar";
 
-const store = useRethinkIdStore();
+const store = useBazaarStore();
 const router = useRouter();
 const route = useRoute();
 
@@ -151,7 +151,6 @@ const shipSizeMap = {
   patrol_boat: 2,
 } as { [key: string]: number };
 
-// TODO RETHINKID: opponents data is "visible" which might be exposed by portability.
 const game: Ref<HostedGame> = ref({
   id: realGameId,
   visible: true,
@@ -184,7 +183,7 @@ const shipOrientation = ref("v" as "v" | "h");
 const currentRow = ref(-1);
 const currentCol = ref(-1);
 
-let unsubscribe: (() => Promise<Message>) | undefined;
+let unsubscribe: (() => Promise<BazaarMessage>) | undefined;
 
 const updateGame: SubscribeListener<HostedGame> = (changes) => {
   const oldGame = changes.oldDoc;
@@ -209,7 +208,7 @@ console.log(userId);
 console.log(hostId);
 console.log(gameId);
 console.log(realGameId);
-const gameCollection = rid.collection<HostedGame>(GAMES_COLLECTION_NAME, { userId: hostId });
+const gameCollection = bzr.collection<HostedGame>(GAMES_COLLECTION_NAME, { userId: hostId });
 
 // Get game
 gameCollection

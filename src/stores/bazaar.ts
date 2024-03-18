@@ -1,11 +1,11 @@
 import { ref, computed } from "vue";
 import type { Ref, ComputedRef } from "vue";
 import { defineStore } from "pinia";
-import { rid } from "@/rethinkid";
-import type { Game, InvitedGame } from "@/types/index";
+import { bzr } from "@/bazaar";
+import type { Game, GameType, HostedGame, InvitedGame } from "@/types/index";
 
-import { PermissionType, CollectionAPI } from "@rethinkid/rethinkid-js-sdk";
-import type { User, Doc, FilterObject, GrantedPermission } from "@rethinkid/rethinkid-js-sdk";
+import { PermissionType, CollectionAPI } from "@bzr/bazaar";
+import type { User, Doc, FilterObject, GrantedPermission } from "@bzr/bazaar";
 
 export const GAMES_COLLECTION_NAME = "games";
 export const HOSTED_GAME_TYPE = "hosted";
@@ -48,7 +48,7 @@ export function freshGameConfig() {
   };
 }
 
-export const useRethinkIdStore = defineStore("rethinkid", () => {
+export const useBazaarStore = defineStore("bazaar", () => {
   const loaded = ref(false);
   const authenticated = ref(false);
   const user = ref({
@@ -65,12 +65,12 @@ export const useRethinkIdStore = defineStore("rethinkid", () => {
     for (const v of visible) {
       if (!v.name) {
         if (v.type === HOSTED_GAME_TYPE) {
-          rid.social.getUser(v.guestId).then((u: User) => {
+          bzr.social.getUser(v.guestId).then((u: User) => {
             v.name = u.name;
           });
         }
         if (v.type === INVITED_GAME_TYPE) {
-          rid.social.getUser(v.hostId).then((u: User) => {
+          bzr.social.getUser(v.hostId).then((u: User) => {
             v.name = u.name;
           });
         }
@@ -79,14 +79,15 @@ export const useRethinkIdStore = defineStore("rethinkid", () => {
     return visible.sort((a: Game, b: Game) => Date.parse(b.lastActive) - Date.parse(a.lastActive));
   });
 
-  const gamesCollection = rid.collection<Game>(GAMES_COLLECTION_NAME);
+  const gamesCollection = bzr.collection<Game>(GAMES_COLLECTION_NAME);
 
   async function checkGranted(g: GrantedPermission) {
     if (
       g.permission &&
       g.permission.collectionName === GAMES_COLLECTION_NAME &&
       g.permission.filter &&
-      g.permission.filter.id
+      g.permission.filter.id &&
+      typeof g.permission.filter.id === "string"
     ) {
       console.log("valid permission");
       let found = false;
@@ -110,7 +111,7 @@ export const useRethinkIdStore = defineStore("rethinkid", () => {
         });
       }
       // Check if granted via link
-      const c = rid.collection<Game>(GAMES_COLLECTION_NAME, { userId: g.ownerId });
+      const c = bzr.collection<Game>(GAMES_COLLECTION_NAME, { userId: g.ownerId });
       const game = await c.getOne(g.permission.filter.id as string);
       console.log("game");
       console.log(game);
@@ -136,22 +137,22 @@ export const useRethinkIdStore = defineStore("rethinkid", () => {
   }
 
   async function autoSignIn() {
-    console.log("autosignin:", rid.isLoggedIn());
-    if (rid.isLoggedIn()) {
+    console.log("autosignin:", bzr.isLoggedIn());
+    if (bzr.isLoggedIn()) {
       try {
-        user.value = await rid.social.getUser();
+        user.value = await bzr.social.getUser();
         console.log("user", user.value);
         authenticated.value = true;
 
         // await gamesCollection.mirrorAll({}, games.value);
         await mirrorAll({}, gamesCollection, games);
 
-        await rid.permissions.granted.subscribe({ collectionName: GAMES_COLLECTION_NAME }, (change) => {
+        await bzr.permissions.granted.subscribe({ collectionName: GAMES_COLLECTION_NAME }, (change) => {
           if (change.newDoc) {
             checkGranted(change.newDoc);
           }
         });
-        const granted = await rid.permissions.granted.list({ collectionName: GAMES_COLLECTION_NAME });
+        const granted = await bzr.permissions.granted.list({ collectionName: GAMES_COLLECTION_NAME });
         for (const g of granted) {
           checkGranted(g);
         }
@@ -171,7 +172,7 @@ export const useRethinkIdStore = defineStore("rethinkid", () => {
       visible: true,
       lastActive: "$now",
       // hosted game specific
-      guestID: userId,
+      guestId: userId,
       config: freshGameConfig(),
       highscore: {
         host: 0,
@@ -183,9 +184,9 @@ export const useRethinkIdStore = defineStore("rethinkid", () => {
         guestSetup: false,
         finished: false,
       },
-    };
+    } as Omit<HostedGame, "id">;
     const gameId = await gamesCollection.insertOne(game);
-    rid.permissions.create({
+    bzr.permissions.create({
       collectionName: GAMES_COLLECTION_NAME,
       userId: userId,
       types: [PermissionType.READ, PermissionType.UPDATE],
@@ -198,7 +199,7 @@ export const useRethinkIdStore = defineStore("rethinkid", () => {
 
   async function createLink() {
     const game = {
-      type: LINK_GAME_TYPE,
+      type: LINK_GAME_TYPE as GameType,
       visible: true,
       lastActive: "$now",
       // link game specific
@@ -206,7 +207,7 @@ export const useRethinkIdStore = defineStore("rethinkid", () => {
       // linkUrl: ""
     };
     const gameId = await gamesCollection.insertOne(game);
-    const link = await rid.permissions.links.create(
+    const link = await bzr.permissions.links.create(
       {
         collectionName: GAMES_COLLECTION_NAME,
         types: [PermissionType.READ, PermissionType.UPDATE],

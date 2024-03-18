@@ -11,5 +11,5 @@ export default defineConfig({
       "@": fileURLToPath(new URL("./src", import.meta.url)),
     },
   },
-  base: "/rethinkid-battleship/", // GiHub pages
+  base: "/bazaar-battleship/", // GiHub pages
 });

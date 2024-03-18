@@ -44,11 +44,11 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from "vue";
-import { useRethinkIdStore } from "@/stores/rethinkid";
-import { rid } from "@/rethinkid";
-import type { Contact } from "@rethinkid/rethinkid-js-sdk";
+import { useBazaarStore } from "@/stores/bazaar";
+import { bzr } from "@/bazaar";
+import type { Contact } from "@bzr/bazaar";
 
-const store = useRethinkIdStore();
+const store = useBazaarStore();
 
 const userId = ref("");
 const idSelected = computed(() => userId.value.length == 36);
@@ -56,7 +56,7 @@ const user = ref({ name: "" });
 
 watch(idSelected, async (hasID) => {
   if (hasID) {
-    user.value = await rid.social.getUser(userId.value);
+    user.value = await bzr.social.getUser(userId.value);
   }
 });
 
@@ -71,10 +71,10 @@ function createGame() {
 }
 
 const contacts = ref([] as Contact[]);
-rid.social.contacts.list().then((c) => {
+bzr.social.contacts.list().then((c) => {
   contacts.value = c;
   console.log(c);
-  rid.social.contacts.subscribe((changes) => {
+  bzr.social.contacts.subscribe((changes) => {
     if (!changes.oldDoc) {
       // New doc
       contacts.value.push(changes.newDoc as Contact);
@@ -96,7 +96,7 @@ rid.social.contacts.list().then((c) => {
 });
 
 function findUser() {
-  rid.social.openModal((uId) => {
+  bzr.social.openModal((uId) => {
     console.log(uId);
     userId.value = uId;
   });

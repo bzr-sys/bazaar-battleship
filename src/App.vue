@@ -9,12 +9,12 @@
 <script setup lang="ts">
 import { RouterView } from "vue-router";
 import AppNav from "@/components/AppNav.vue";
-import { useRethinkIdStore } from "@/stores/rethinkid";
+import { useBazaarStore } from "@/stores/bazaar";
 
-const store = useRethinkIdStore();
+const store = useBazaarStore();
 
-import { rid } from "@/rethinkid";
-rid.onLogin(async () => {
+import { bzr } from "@/bazaar";
+bzr.onLogin(async () => {
   console.log("onLogin is called");
   store.autoSignIn();
 });
