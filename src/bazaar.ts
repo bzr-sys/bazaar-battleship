@@ -2,10 +2,7 @@ import { BazaarApp, type BazaarOptions } from "@bzr/bazaar";
 
 // e.g., https://bzr-sys.github.io/bazaar-battleship/
 const baseURL = window.location.origin + window.location.pathname;
-
 const appId = import.meta.env.VITE_APP_ID;
-
-console.log("app id", appId);
 
 const config: BazaarOptions = {
   appId: appId,

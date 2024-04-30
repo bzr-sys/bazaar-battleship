@@ -1,92 +1,3 @@
-<template>
-  <div class="game">
-    <div class="game-card">
-      <p class="game-card-title">High Score</p>
-      <p v-if="isHost">You ({{ game.highscore.host }}) - Opponent ({{ game.highscore.guest }})</p>
-      <p v-else>You ({{ game.highscore.guest }}) - Opponent ({{ game.highscore.host }})</p>
-    </div>
-
-    <!-- <p>Host: {{ game.host }} <span v-if="isHost">(you)</span></p>
-    <p>Guest: {{ game.guest.id }} <span v-if="!isHost">(you)</span></p>
-    <p>Turn: {{ game.status.currentTurn }}</p>
-    <p>Finished: {{ game.status.finished }}</p> -->
-
-    <div class="game-card">
-      <p class="game-card-title">Status</p>
-      <p v-if="!setupComplete">Set up your ships</p>
-      <p v-else-if="!opponentSetupComplete">Wait for opponent to set up ships</p>
-      <p v-else-if="game.status.finished">Game is finished</p>
-      <p v-else-if="myTurn">It is your turn</p>
-      <p v-else>Wait for opponent to play</p>
-    </div>
-
-    <button v-if="game.status.finished" class="game-button" @click="startNewGame()">Start new game</button>
-
-    <div v-if="setupComplete" class="game-board">
-      <div class="flex">
-        <div>
-          <p class="game-card-title">You ships</p>
-          <div class="board">
-            <div v-for="(row, ri) in shipBoard" :key="ri" class="row">
-              <div v-for="(col, ci) in row" :key="ci" class="col" :class="'ship-' + col"></div>
-            </div>
-          </div>
-        </div>
-
-        <div v-if="opponentSetupComplete">
-          <p class="game-card-title">Your bombs</p>
-          <div class="board">
-            <div v-for="(row, ri) in bombBoard" :key="ri" class="row">
-              <button
-                v-for="(col, ci) in row"
-                :key="ci"
-                class="col"
-                :class="'bomb-' + col"
-                :disabled="disabledBomb(ri, ci)"
-                @click="setBomb(ri, ci)"
-              ></button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div v-else class="game-board">
-      <!-- Set up ships-->
-      <div v-if="unsetShips.length > 0" class="button-group">
-        <p>Choose a ship to place on board</p>
-        <button
-          v-for="s in unsetShips"
-          :key="s"
-          class="game-button"
-          :class="unsetShipClass(s)"
-          @click="selectUnsetShip(s)"
-        >
-          {{ s }}
-        </button>
-        <p>Right click to rotate ship</p>
-      </div>
-      <div v-else class="button-group">
-        <button class="game-button" @click="completeSetup()">Start</button>
-      </div>
-
-      <div class="board" @mouseleave="mouseleaveBoard()">
-        <div v-for="(row, ri) in placementBoard" :key="ri" class="row">
-          <div
-            v-for="(col, ci) in row"
-            :key="ci"
-            class="col"
-            :class="'setup-' + col"
-            @mouseover="mouseoverField(ri, ci)"
-            @click="setShip()"
-            @contextmenu="flipOrientation($event)"
-          ></div>
-        </div>
-      </div>
-    </div>
-  </div>
-</template>
-
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import type { ComputedRef, Ref } from "vue";
@@ -110,18 +21,9 @@ const route = useRoute();
 const userId = store.user.id;
 const gameId = Array.isArray(route.params.gameId) ? route.params.gameId[0] : route.params.gameId;
 
-console.log(store.visibleGames);
-console.log(store.visibleGames[0]);
-console.log(store.visibleGames[0].id);
 let gameIdx = store.visibleGames.findIndex((g) => {
-  console.log(g);
   return g.id === gameId;
 });
-
-console.log(userId);
-console.log(gameId);
-console.log(store.visibleGames);
-console.log(gameIdx);
 
 if (gameIdx < 0) {
   router.push({ name: "home" });
@@ -141,8 +43,6 @@ if (store.visibleGames[gameIdx].type === INVITED_GAME_TYPE) {
   guestId = g.guestId;
 }
 
-const allShips = ["carrier", "battleship", "destroyer", "submarine", "patrol_boat"];
-const allFalse = Array(10).fill(Array(10).fill(false));
 const shipSizeMap = {
   carrier: 5,
   battleship: 4,
@@ -158,14 +58,7 @@ const game: Ref<HostedGame> = ref({
 
   type: HOSTED_GAME_TYPE,
   guestId: guestId,
-  config: {
-    hostUnset: allShips,
-    guestUnset: allShips,
-    hostShips: allFalse,
-    guestShips: allFalse,
-    hostBombs: allFalse,
-    guestBombs: allFalse,
-  },
+  config: freshGameConfig(),
   highscore: {
     host: 0,
     guest: 0,
@@ -204,17 +97,12 @@ const updateGame: SubscribeListener<HostedGame> = (changes) => {
   }
 };
 
-console.log(userId);
-console.log(hostId);
-console.log(gameId);
-console.log(realGameId);
 const gameCollection = bzr.collection<HostedGame>(GAMES_COLLECTION_NAME, { userId: hostId });
 
 // Get game
 gameCollection
   .getOne(realGameId)
   .then((g) => {
-    console.log("got game:", g);
     if (!g) {
       console.log("failed game ID:", realGameId);
       console.log("failed game host:", hostId);
@@ -370,9 +258,9 @@ const myTurn: ComputedRef<boolean> = computed(() => {
 
 const unsetShipClass: (ship: string) => string = (ship) => {
   if (ship == selectedShip.value) {
-    return "selected";
+    return "border-amber-700 bg-amber-700";
   }
-  return "";
+  return "border-amber-500 bg-amber-500";
 };
 
 const selectUnsetShip: (ship: string) => void = (ship) => {
@@ -387,7 +275,6 @@ const mouseoverField: (ri: number, ci: number) => void = (ri, ci) => {
 const mouseleaveBoard: () => void = () => {
   currentRow.value = -1;
   currentCol.value = -1;
-  // console.log("Row: -1 Col: -1");
 };
 
 const flipOrientation: (e: Event) => void = (e) => {
@@ -407,80 +294,69 @@ const setShip: () => void = () => {
   const c = currentCol.value;
   const size = shipSizeMap[selectedShip.value];
 
+  let unset = game.value.config.guestUnset;
+  let ships = game.value.config.guestShips;
   if (isHost) {
-    if (shipOrientation.value == "v") {
-      if (r > 10 - size) {
-        return;
-      }
-      for (let i = 0; i < size; i++) {
-        if (game.value.config.hostShips[r + i][c]) {
-          // check for collision
-          return;
-        }
-      }
-      for (let i = 0; i < size; i++) {
-        game.value.config.hostShips[r + i][c] = true;
-      }
-    } else {
-      // orientation is "h"
-      if (c > 10 - size) {
-        return;
-      }
-      for (let i = 0; i < size; i++) {
+    unset = game.value.config.hostUnset;
+    ships = game.value.config.hostShips;
+  }
+  if (shipOrientation.value == "v") {
+    if (r > 10 - size) {
+      return;
+    }
+    for (let i = 0; i < size; i++) {
+      if (ships[r + i][c]) {
         // check for collision
-        if (game.value.config.hostShips[r][c + i]) {
-          return;
-        }
-      }
-      for (let i = 0; i < size; i++) {
-        game.value.config.hostShips[r][c + i] = true;
+        return;
       }
     }
-    const index = game.value.config.hostUnset.indexOf(selectedShip.value);
-    if (index > -1) {
-      game.value.config.hostUnset.splice(index, 1);
+    for (let i = 0; i < size; i++) {
+      ships[r + i][c] = true;
     }
   } else {
-    // guest
-    if (shipOrientation.value == "v") {
-      if (r > 10 - size) {
+    // orientation is "h"
+    if (c > 10 - size) {
+      return;
+    }
+    for (let i = 0; i < size; i++) {
+      // check for collision
+      if (ships[r][c + i]) {
         return;
       }
-      for (let i = 0; i < size; i++) {
-        if (game.value.config.guestShips[r + i][c]) {
-          // check for collision
-          return;
-        }
-      }
-      for (let i = 0; i < size; i++) {
-        game.value.config.guestShips[r + i][c] = true;
-      }
-    } else {
-      // orientation is "h"
-      if (c > 10 - size) {
-        return;
-      }
-      for (let i = 0; i < size; i++) {
-        if (game.value.config.guestShips[r][c + i]) {
-          // check for collision
-          return;
-        }
-      }
-      for (let i = 0; i < size; i++) {
-        game.value.config.guestShips[r][c + i] = true;
-      }
     }
-    const index = game.value.config.guestUnset.indexOf(selectedShip.value);
-    if (index > -1) {
-      game.value.config.guestUnset.splice(index, 1);
+    for (let i = 0; i < size; i++) {
+      ships[r][c + i] = true;
     }
+  }
+  const index = unset.indexOf(selectedShip.value);
+  if (index > -1) {
+    unset.splice(index, 1);
+  }
+
+  if (isHost) {
+    game.value.config.hostShips = ships;
+    game.value.config.hostUnset = unset;
+  } else {
+    game.value.config.guestShips = ships;
+    game.value.config.guestUnset = unset;
   }
   // unselect ship
   selectedShip.value = "";
 };
 
+// Must satisfy DeepPartial<HostedGame>
+type GameSetup =
+  | {
+      status: { guestSetup: true };
+      config: { guestUnset: string[]; guestShips: boolean[][] };
+    }
+  | {
+      status: { hostSetup: true };
+      config: { hostUnset: string[]; hostShips: boolean[][] };
+    };
+
 const completeSetup: () => void = () => {
-  let gameUpdate = {} as any;
+  let gameUpdate = {} as GameSetup;
 
   if (isHost) {
     gameUpdate["config"] = {
@@ -499,6 +375,7 @@ const completeSetup: () => void = () => {
 
   // Update config and status
   gameCollection
+    // @ts-ignore TODO should no longer be required with bazaar v1.1.1
     .updateOne(realGameId, gameUpdate)
     .then(() => {
       gameCollection
@@ -554,10 +431,6 @@ const setBomb: (ri: number, ci: number) => void = (ri, ci) => {
     // Sanity check
     return;
   }
-  console.log("Setting bomb");
-  console.log(isHost);
-  console.log(game.value.status.currentTurn);
-  console.log(guestId);
   if (isHost) {
     game.value.config.hostBombs[ri][ci] = true;
     game.value.status.currentTurn = guestId;
@@ -590,90 +463,114 @@ const startNewGame: () => void = () => {
 };
 </script>
 
+<template>
+  <div class="max-w-5xl mx-auto text-center bg-neutral-400">
+    <div class="pt-4">
+      <div class="max-w-sm mx-auto p-4 bg-neutral-700 text-white">
+        <p class="font-semibold">High Score</p>
+        <p v-if="isHost">You ({{ game.highscore.host }}) - Opponent ({{ game.highscore.guest }})</p>
+        <p v-else>You ({{ game.highscore.guest }}) - Opponent ({{ game.highscore.host }})</p>
+      </div>
+    </div>
+
+    <!-- <p>Host: {{ game.host }} <span v-if="isHost">(you)</span></p>
+    <p>Guest: {{ game.guest.id }} <span v-if="!isHost">(you)</span></p>
+    <p>Turn: {{ game.status.currentTurn }}</p>
+    <p>Finished: {{ game.status.finished }}</p> -->
+    <div class="pt-4">
+      <div class="max-w-sm mx-auto p-4 bg-neutral-700 text-white">
+        <p class="font-semibold">Status</p>
+        <p v-if="!setupComplete">Set up your ships</p>
+        <p v-else-if="!opponentSetupComplete">Wait for opponent to set up ships</p>
+        <p v-else-if="game.status.finished">Game is finished</p>
+        <p v-else-if="myTurn">It is your turn</p>
+        <p v-else>Wait for opponent to play</p>
+      </div>
+    </div>
+
+    <div v-if="game.status.finished" class="pt-4">
+      <button class="border-2 border-amber-500 bg-amber-500 px-4 py-2 text-white font-semibold" @click="startNewGame()">
+        Start new game
+      </button>
+    </div>
+
+    <div class="py-4 text-white">
+      <div v-if="setupComplete" class="max-w-3xl mx-auto p-4 bg-neutral-700">
+        <div class="flex justify-center gap-4 flex-col md:flex-row">
+          <div>
+            <p class="font-semibold">Your ships</p>
+            <div class="inline-block border-2 border-amber-500">
+              <div v-for="(row, ri) in shipBoard" :key="ri" class="row">
+                <div v-for="(col, ci) in row" :key="ci" class="border-neutral-900 border" :class="'ship-' + col"></div>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="opponentSetupComplete">
+            <p class="font-semibold">Your bombs</p>
+            <div class="inline-block border-2 border-amber-500">
+              <div v-for="(row, ri) in bombBoard" :key="ri" class="row">
+                <button
+                  v-for="(col, ci) in row"
+                  :key="ci"
+                  class="border-neutral-900 border"
+                  :class="'bomb-' + col"
+                  :disabled="disabledBomb(ri, ci)"
+                  @click="setBomb(ri, ci)"
+                ></button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div v-else class="max-w-3xl mx-auto p-4 bg-neutral-700 text-white">
+        <!-- Set up ships-->
+        <div v-if="unsetShips.length > 0" class="py-4">
+          <p>Choose a ship to place on board</p>
+          <button
+            v-for="s in unsetShips"
+            :key="s"
+            class="border-2 px-4 py-2 text-white font-semibold m-2"
+            :class="unsetShipClass(s)"
+            @click="selectUnsetShip(s)"
+          >
+            {{ s }}
+          </button>
+          <p>Right click to rotate ship</p>
+        </div>
+        <div v-else class="py-4">
+          <button
+            class="border-2 border-amber-500 bg-amber-500 px-4 py-2 text-white font-semibold"
+            @click="completeSetup()"
+          >
+            Start
+          </button>
+        </div>
+
+        <div class="inline-block border-2 border-amber-500" @mouseleave="mouseleaveBoard()">
+          <div v-for="(row, ri) in placementBoard" :key="ri" class="row">
+            <div
+              v-for="(col, ci) in row"
+              :key="ci"
+              class="border-neutral-900 border"
+              :class="'setup-' + col"
+              @mouseover="mouseoverField(ri, ci)"
+              @click="setShip()"
+              @contextmenu="flipOrientation($event)"
+            ></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
 <style scoped lang="scss">
-.game {
-  max-width: min(1200px, 90%);
-  margin-inline: auto;
-  text-align: center;
-}
-
-.game-card {
-  max-width: 400px;
-  margin-inline: auto;
-  text-align: center;
-
-  padding: 1rem;
-  margin-block: 1rem;
-
-  display: flow-root; // make sure margin of children is respected
-  background-color: hsl(189, 50%, 70%);
-  border-radius: 0.25rem;
-  box-shadow:
-    0 0.5rem 1em -0.125em rgb(10 10 10 / 10%),
-    0 0 0 1px rgb(10 10 10 / 2%);
-
-  &-title {
-    font-size: 0.9rem;
-    font-weight: 600;
-  }
-}
-
-.game-board {
-  max-width: 800px;
-  margin-inline: auto;
-  text-align: center;
-
-  padding: 1rem;
-  margin-block: 1rem;
-
-  display: flow-root; // make sure margin of children is respected
-  background-color: hsl(189, 50%, 70%);
-  border-radius: 0.25rem;
-  box-shadow:
-    0 0.5rem 1em -0.125em rgb(10 10 10 / 10%),
-    0 0 0 1px rgb(10 10 10 / 2%);
-}
-.button-group {
-  padding: 1rem;
-}
-
-.flex {
-  display: flex;
-  justify-content: center;
-  gap: 1rem;
-}
-.board {
-  // padding: 1em;
-  display: inline-block;
-}
 .row {
   height: 30px;
   display: grid;
   grid-template-columns: 30px 30px 30px 30px 30px 30px 30px 30px 30px 30px;
-}
-
-.col {
-  border-color: black;
-  border-width: 1px;
-  border-style: solid;
-  // background-color: white;
-
-  // &:hover {
-  //   background-color: grey;
-  // }
-}
-
-.game-button {
-  // border-color: red;
-  // border-width: 1px;
-  border-style: none;
-  padding: 1rem;
-  background-color: hsl(189, 50%, 40%);
-  margin: 3px;
-}
-
-.selected {
-  background-color: grey;
 }
 
 .setup {
@@ -684,17 +581,17 @@ const startNewGame: () => void = () => {
 
   &-1 {
     // Ship
-    background-color: black;
+    @apply bg-neutral-900;
   }
 
   &-2 {
     // Possible
-    background-color: grey;
+    @apply bg-neutral-400;
   }
 
   &-3 {
     // Impossible
-    background-color: red;
+    @apply bg-red-600;
   }
 }
 
@@ -706,17 +603,17 @@ const startNewGame: () => void = () => {
 
   &-1 {
     // Ship
-    background-color: black;
+    @apply bg-neutral-900;
   }
 
   &-2 {
     // Ship (hit)
-    background-color: red;
+    @apply bg-red-600;
   }
 
   &-3 {
-    // Ship
-    background-color: blue;
+    // Water (hit)
+    @apply bg-blue-700;
   }
 }
 
@@ -725,24 +622,24 @@ const startNewGame: () => void = () => {
     // Water
     background-color: white;
     &:hover {
-      background-color: red;
+      @apply bg-red-600;
     }
 
     &:disabled {
-      background-color: whitesmoke;
-      border-color: lightgrey;
+      @apply bg-neutral-100;
+      @apply border-neutral-300;
     }
   }
 
   &-1 {
     // Miss
-    background-color: lightgrey;
-    border-color: lightgrey;
+    @apply bg-neutral-300;
+    @apply border-neutral-300;
   }
 
   &-2 {
     // Hit
-    background-color: black;
+    @apply bg-neutral-900;
   }
 }
 </style>

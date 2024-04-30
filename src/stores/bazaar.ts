@@ -1,39 +1,16 @@
 import { ref, computed } from "vue";
-import type { Ref, ComputedRef } from "vue";
+import type { ComputedRef } from "vue";
 import { defineStore } from "pinia";
 import { bzr } from "@/bazaar";
 import type { Game, GameType, HostedGame, InvitedGame } from "@/types/index";
 
-import { PermissionType, CollectionAPI } from "@bzr/bazaar";
-import type { User, Doc, FilterObject, GrantedPermission } from "@bzr/bazaar";
+import { PermissionType } from "@bzr/bazaar";
+import type { User, GrantedPermission } from "@bzr/bazaar";
 
 export const GAMES_COLLECTION_NAME = "games";
 export const HOSTED_GAME_TYPE = "hosted";
 export const INVITED_GAME_TYPE = "invited";
 export const LINK_GAME_TYPE = "link";
-
-async function mirrorAll<T extends Doc>(filter: FilterObject, collection: CollectionAPI<T>, data: Ref<T[]>) {
-  data.value = await collection.getAll(filter);
-  return await collection.subscribeAll(filter, (changes) => {
-    if (!changes.oldDoc) {
-      // New doc
-      data.value.push(changes.newDoc!);
-      return;
-    }
-    if (!changes.newDoc) {
-      // Deleted doc
-      const idx = data.value.findIndex((doc) => doc.id === changes.oldDoc!.id);
-      if (idx > -1) {
-        data.value.splice(idx, 1);
-      }
-      return;
-    }
-    // Changed doc
-    const idx = data.value.findIndex((doc) => doc.id === changes.newDoc!.id);
-    data.value[idx] = changes.newDoc!;
-    return;
-  });
-}
 
 export function freshGameConfig() {
   const allShips = ["carrier", "battleship", "destroyer", "submarine", "patrol_boat"];
@@ -53,7 +30,7 @@ export const useBazaarStore = defineStore("bazaar", () => {
   const authenticated = ref(false);
   const user = ref({
     id: "",
-    email: "",
+    handle: "",
     name: "",
   } as User);
   const games = ref([] as Game[]);
@@ -65,12 +42,12 @@ export const useBazaarStore = defineStore("bazaar", () => {
     for (const v of visible) {
       if (!v.name) {
         if (v.type === HOSTED_GAME_TYPE) {
-          bzr.social.getUser(v.guestId).then((u: User) => {
+          bzr.social.getUser({ userId: v.guestId }).then((u: User) => {
             v.name = u.name;
           });
         }
         if (v.type === INVITED_GAME_TYPE) {
-          bzr.social.getUser(v.hostId).then((u: User) => {
+          bzr.social.getUser({ userId: v.hostId }).then((u: User) => {
             v.name = u.name;
           });
         }
@@ -89,17 +66,14 @@ export const useBazaarStore = defineStore("bazaar", () => {
       g.permission.filter.id &&
       typeof g.permission.filter.id === "string"
     ) {
-      console.log("valid permission");
       let found = false;
       for (const game of invitedGames.value) {
         if (game.grantedPermissionId === g.id) {
           found = true;
-          console.log("found");
           break;
         }
       }
       if (!found) {
-        console.log("not found, insert");
         gamesCollection.insertOne({
           type: INVITED_GAME_TYPE,
           visible: true,
@@ -113,8 +87,6 @@ export const useBazaarStore = defineStore("bazaar", () => {
       // Check if granted via link
       const c = bzr.collection<Game>(GAMES_COLLECTION_NAME, { userId: g.ownerId });
       const game = await c.getOne(g.permission.filter.id as string);
-      console.log("game");
-      console.log(game);
       if (game && game.type === LINK_GAME_TYPE) {
         await c.updateOne(g.permission.filter.id as string, {
           type: HOSTED_GAME_TYPE,
@@ -137,15 +109,13 @@ export const useBazaarStore = defineStore("bazaar", () => {
   }
 
   async function autoSignIn() {
-    console.log("autosignin:", bzr.isLoggedIn());
     if (bzr.isLoggedIn()) {
       try {
         user.value = await bzr.social.getUser();
-        console.log("user", user.value);
         authenticated.value = true;
 
-        // await gamesCollection.mirrorAll({}, games.value);
-        await mirrorAll({}, gamesCollection, games);
+        // @ts-ignore Property 'mirrorAll' is private and only accessible within class 'CollectionAPI<T>'
+        await gamesCollection.mirrorAll({}, games.value);
 
         await bzr.permissions.granted.subscribe({ collectionName: GAMES_COLLECTION_NAME }, (change) => {
           if (change.newDoc) {
@@ -194,7 +164,6 @@ export const useBazaarStore = defineStore("bazaar", () => {
         id: gameId,
       },
     });
-    console.log("create game done");
   }
 
   async function createLink() {
@@ -215,10 +184,10 @@ export const useBazaarStore = defineStore("bazaar", () => {
           id: gameId,
         },
       },
+      "Link for new game",
       1,
     );
     gamesCollection.updateOne(gameId, { linkId: link.id, linkUrl: link.url });
-    console.log("create game done");
     return link.url;
   }
 
