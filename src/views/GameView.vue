@@ -375,7 +375,6 @@ const completeSetup: () => void = () => {
 
   // Update config and status
   gameCollection
-    // @ts-ignore TODO should no longer be required with bazaar v1.1.1
     .updateOne(realGameId, gameUpdate)
     .then(() => {
       gameCollection
