@@ -10,7 +10,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build Vue app
         env:
-          VITE_APP_ID: 018e5126-7024-7a06-9936-a6c0e7e0fb34
+          VITE_APP_ID: 01a11519-2fda-7a59-b171-3bd62bb32704
         run: |
           npm ci
           npm run build
