@@ -5,7 +5,7 @@ import { useRoute, useRouter } from "vue-router";
 import type { Game, InvitedGame, HostedGame } from "@/types";
 
 import { bzr } from "@/bazaar";
-import type { BazaarMessage, SubscribeListener } from "@bzr/bazaar";
+import type { CollectionAPI, SubscribeListener } from "@bzr/bazaar";
 import {
   useBazaarStore,
   HOSTED_GAME_TYPE,
@@ -76,33 +76,30 @@ const shipOrientation = ref("v" as "v" | "h");
 const currentRow = ref(-1);
 const currentCol = ref(-1);
 
-let unsubscribe: (() => Promise<BazaarMessage>) | undefined;
+let unsubscribe: (() => Promise<string>) | undefined;
+let gameCollection: CollectionAPI<HostedGame>;
 
-const updateGame: SubscribeListener<HostedGame> = (changes) => {
-  const oldGame = changes.oldDoc;
-  const newGame = changes.newDoc;
-  if (!newGame) {
-    return;
-  }
-  game.value = newGame;
-
-  if (!oldGame) {
-    return;
-  }
-  if (oldGame.status.finished && !newGame.status.finished && unsubscribe != undefined) {
-    // New game started -> cancel subscription
-    unsubscribe().then(() => {
-      unsubscribe = undefined;
-    });
-  }
+const updateGame: SubscribeListener<HostedGame> = {
+  onAdd: (newGame) => {
+    game.value = newGame;
+  },
+  onChange: (oldGame, newGame) => {
+    game.value = newGame;
+    if (oldGame.status.finished && !newGame.status.finished && unsubscribe != undefined) {
+      // New game started -> cancel subscription
+      unsubscribe().then(() => {
+        unsubscribe = undefined;
+      });
+    }
+  },
 };
 
-const gameCollection = bzr.collection<HostedGame>(GAMES_COLLECTION_NAME, { userId: hostId });
+void (async () => {
+  const ctx = await bzr.createContext({ ownerId: hostId });
+  gameCollection = ctx.collection<HostedGame>(GAMES_COLLECTION_NAME);
 
-// Get game
-gameCollection
-  .getOne(realGameId)
-  .then((g) => {
+  try {
+    const g = await gameCollection.getOne(realGameId);
     if (!g) {
       console.log("failed game ID:", realGameId);
       console.log("failed game host:", hostId);
@@ -112,19 +109,12 @@ gameCollection
 
     // Subscribe to more if setup complete
     if ((isHost && game.value.status.hostSetup) || (!isHost && game.value.status.guestSetup)) {
-      gameCollection
-        .subscribeOne(realGameId, updateGame)
-        .then((u) => {
-          unsubscribe = u;
-        })
-        .catch((err) => {
-          console.log("Got error:", err);
-        });
+      unsubscribe = await gameCollection.subscribeOne(realGameId, updateGame);
     }
-  })
-  .catch((err) => {
+  } catch (err) {
     console.log("Got error instead of game:", err);
-  });
+  }
+})();
 
 // 0: Empty
 // 1: Ship
@@ -386,7 +376,9 @@ const completeSetup: () => void = () => {
           gameCollection
             .getOne(realGameId)
             .then((g) => {
-              game.value = g;
+              if (g) {
+                game.value = g;
+              }
             })
             .catch((err) => {
               console.log("Got error instead of game:", err);

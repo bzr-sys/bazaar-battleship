@@ -12,7 +12,7 @@ const store = useBazaarStore();
     <div class="flex gap-2">
       <button
         class="border-2 border-amber-500 bg-amber-500 px-4 py-2 text-white font-semibold"
-        @click="bzr.social.openModal(store.createGame)"
+        @click="bzr.social.openPopup(store.createGame)"
       >
         Find User
       </button>

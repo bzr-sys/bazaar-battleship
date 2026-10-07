@@ -2,6 +2,7 @@
   "name": "bazaar_battleship",
   "version": "0.0.0",
   "private": true,
+  "packageManager": "pnpm@9.0.0",
   "scripts": {
     "dev": "vite",
     "build": "run-p type-check \"build-only {@}\" --",
@@ -12,7 +13,7 @@
     "format": "prettier --write src/"
   },
   "dependencies": {
-    "@bzr/bazaar": "^1.1.1",
+    "@bzr/bazaar": "1.6.0",
     "pinia": "^2.1.7",
     "vue": "^3.3.4",
     "vue-router": "^4.2.5"

@@ -4,7 +4,7 @@ import { defineStore } from "pinia";
 import { bzr } from "@/bazaar";
 import type { Game, GameType, HostedGame, InvitedGame } from "@/types/index";
 
-import { PermissionType } from "@bzr/bazaar";
+import { arrayMirrorSubscribeListener, GranteeType, PermissionType } from "@bzr/bazaar";
 import type { User, GrantedPermission } from "@bzr/bazaar";
 
 export const GAMES_COLLECTION_NAME = "games";
@@ -85,7 +85,8 @@ export const useBazaarStore = defineStore("bazaar", () => {
         });
       }
       // Check if granted via link
-      const c = bzr.collection<Game>(GAMES_COLLECTION_NAME, { userId: g.ownerId });
+      const ctx = await bzr.createContext({ ownerId: g.ownerId });
+      const c = ctx.collection<Game>(GAMES_COLLECTION_NAME);
       const game = await c.getOne(g.permission.filter.id as string);
       if (game && game.type === LINK_GAME_TYPE) {
         await c.updateOne(g.permission.filter.id as string, {
@@ -114,14 +115,19 @@ export const useBazaarStore = defineStore("bazaar", () => {
         user.value = await bzr.social.getUser();
         authenticated.value = true;
 
-        // @ts-ignore Property 'mirrorAll' is private and only accessible within class 'CollectionAPI<T>'
-        await gamesCollection.mirrorAll({}, games.value);
+        await gamesCollection.subscribeAll({}, arrayMirrorSubscribeListener(games.value));
 
-        await bzr.permissions.granted.subscribe({ collectionName: GAMES_COLLECTION_NAME }, (change) => {
-          if (change.newDoc) {
-            checkGranted(change.newDoc);
-          }
-        });
+        await bzr.permissions.granted.subscribe(
+          { collectionName: GAMES_COLLECTION_NAME },
+          {
+            onAdd: (newDoc) => {
+              checkGranted(newDoc);
+            },
+            onChange: (_oldDoc, newDoc) => {
+              checkGranted(newDoc);
+            },
+          },
+        );
         const granted = await bzr.permissions.granted.list({ collectionName: GAMES_COLLECTION_NAME });
         for (const g of granted) {
           checkGranted(g);
@@ -158,7 +164,8 @@ export const useBazaarStore = defineStore("bazaar", () => {
     const gameId = await gamesCollection.insertOne(game);
     bzr.permissions.create({
       collectionName: GAMES_COLLECTION_NAME,
-      userId: userId,
+      granteeType: GranteeType.USER,
+      granteeId: userId,
       types: [PermissionType.READ, PermissionType.UPDATE],
       filter: {
         id: gameId,
