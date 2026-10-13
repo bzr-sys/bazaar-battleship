@@ -7,23 +7,24 @@ The classic two-player Battleship game, built as a [Bazaar](https://bzr.dev) exa
 ## Features
 
 - Sign up or log in with a Bazaar account
-- Challenge another Bazaar user directly (**Find User**), or create a one-time invite link (**Create Link**) to send to anyone
-- Place your five ships, then take turns bombing your opponent's grid
-- Rematches keep a running highscore per opponent
-- Games update live for both players
+- Challenge another Bazaar user directly (**Challenge a player**), or open a one-time invite link (**Open an invite link**) to send to anyone
+- Deploy your five ships by clicking or tapping (**R** or **Rotate** turns a ship, **Auto-deploy** places them all), then take turns firing at your opponent's waters
+- A shot log, last-shot markers and a damage report show what was hit and sunk
+- Rematches keep a running series score per opponent
+- Games update live for both players, and the lobby shows whose turn it is in every game
 
 ## How it uses Bazaar
 
-| Bazaar feature        | Used for                                                                                 |
-| --------------------- | ---------------------------------------------------------------------------------------- |
-| Collections (`games`) | Each player keeps their games in their own `games` collection                            |
-| Permissions           | The host grants the guest read/update access to that one game (`filter: { id: gameId }`) |
-| Shareable links       | **Create Link** makes a single-use link that grants the same access to whoever opens it  |
-| Granted permissions   | The guest's app watches for new grants and adds the game to their list                   |
-| Contexts              | The guest reads and updates the game in the host's database                              |
-| Subscriptions         | Both players get board changes in real time                                              |
+| Bazaar feature        | Used for                                                                                         |
+| --------------------- | ------------------------------------------------------------------------------------------------ |
+| Collections (`games`) | Each player keeps their games in their own `games` collection                                    |
+| Permissions           | The host grants the guest read/update access to that one game (`filter: { id: gameId }`)         |
+| Shareable links       | **Open an invite link** makes a single-use link that grants the same access to whoever opens it  |
+| Granted permissions   | The guest's app watches for new grants and adds the game to their list                           |
+| Contexts              | The guest reads and updates the game in the host's database, live in both the lobby and the game |
+| Subscriptions         | Both players get board changes in real time                                                      |
 
-The Bazaar setup is in `src/bazaar.ts`, and the game logic is in `src/stores/bazaar.ts` and `src/views/GameView.vue`.
+The Bazaar setup is in `src/bazaar.ts`, the game rules in `src/game.ts`, the data handling in `src/stores/bazaar.ts`, and the screens in `src/views/` and `src/components/`.
 
 ## Tech stack
 

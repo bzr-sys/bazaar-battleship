@@ -2,12 +2,11 @@
 import { RouterView } from "vue-router";
 import AppNav from "@/components/AppNav.vue";
 import { useBazaarStore } from "@/stores/bazaar";
+import { bzr } from "@/bazaar";
 
 const store = useBazaarStore();
 
-import { bzr } from "@/bazaar";
 bzr.onLogin(async () => {
-  console.log("onLogin is called");
   store.autoSignIn();
 });
 
@@ -16,8 +15,6 @@ store.autoSignIn();
 
 <template>
   <AppNav />
-  <div class="container m-auto">
-    <RouterView v-if="store.loaded" />
-    <div class="loading" v-else>Loading...</div>
-  </div>
+  <RouterView v-if="store.loaded" />
+  <p v-else class="hd mx-auto max-w-[1240px] px-6 py-10 text-sonar-dim" role="status">Connecting…</p>
 </template>

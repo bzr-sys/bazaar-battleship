@@ -3,8 +3,6 @@ import type { Doc } from "@bzr/bazaar";
 type GameCommon = Doc & {
   visible: boolean;
   lastActive: string;
-
-  name?: string; // Added by store
 };
 
 export type HostedGame = GameCommon & {
@@ -39,6 +37,13 @@ export type GameConfig = {
   guestShips: boolean[][];
   hostBombs: boolean[][];
   guestBombs: boolean[][];
+  // Added with the Sonar redesign; games started before it lack them.
+  /** Each ship's squares (row * 10 + column), in the order of SHIPS in game.ts. */
+  hostFleet?: number[][];
+  guestFleet?: number[][];
+  /** Squares fired at, in order. */
+  hostShotLog?: number[];
+  guestShotLog?: number[];
 };
 
 export type Highscore = {

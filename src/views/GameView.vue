@@ -1,636 +1,213 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
-import type { ComputedRef, Ref } from "vue";
-import { useRoute, useRouter } from "vue-router";
-import type { Game, InvitedGame, HostedGame } from "@/types";
+import { computed, onUnmounted, ref, watch } from "vue";
+import { useRoute } from "vue-router";
+import type { DeepPartial } from "@bzr/bazaar";
 
-import { bzr } from "@/bazaar";
-import type { CollectionAPI, SubscribeListener } from "@bzr/bazaar";
-import {
-  useBazaarStore,
-  HOSTED_GAME_TYPE,
-  INVITED_GAME_TYPE,
-  GAMES_COLLECTION_NAME,
-  freshGameConfig,
-} from "@/stores/bazaar";
+import { useBazaarStore } from "@/stores/bazaar";
+import type { HostedGame } from "@/types";
+import { SIZE, allSunk, gridFromCells, isShot, pad2 } from "@/game";
+import FleetSetup from "@/components/FleetSetup.vue";
+import BattleStation from "@/components/BattleStation.vue";
 
 const store = useBazaarStore();
-const router = useRouter();
 const route = useRoute();
 
-const userId = store.user.id;
-const gameId = Array.isArray(route.params.gameId) ? route.params.gameId[0] : route.params.gameId;
+const gameId = computed(() => String(route.params.gameId));
+const engagement = computed(() => store.engagements.find((e) => e.id === gameId.value));
+const opponent = computed(() => (engagement.value ? store.people[engagement.value.opponentId] : undefined));
+const opponentName = computed(() => opponent.value?.name || "Opponent");
 
-let gameIdx = store.visibleGames.findIndex((g) => {
-  return g.id === gameId;
-});
+// A game created a moment ago may not have reached the lobby list yet.
+const searching = ref(true);
+const searchTimer = setTimeout(() => (searching.value = false), 4000);
+onUnmounted(() => clearTimeout(searchTimer));
 
-if (gameIdx < 0) {
-  router.push({ name: "home" });
+const busy = ref(false);
+const pending = ref<number | null>(null);
+const error = ref("");
+
+// A pending shot is done once it shows up in the game.
+watch(
+  () => engagement.value?.view?.myShots,
+  (shots) => {
+    if (pending.value !== null && shots && isShot(shots, pending.value)) pending.value = null;
+  },
+);
+
+async function write(update: DeepPartial<HostedGame>) {
+  const e = engagement.value;
+  if (!e) return;
+  error.value = "";
+  await store.updateGame(e, { ...update, lastActive: "$now" });
 }
 
-let hostId = userId;
-let guestId = userId;
-let realGameId = gameId;
-let isHost = true;
-if (store.visibleGames[gameIdx].type === INVITED_GAME_TYPE) {
-  const g = store.visibleGames[gameIdx] as InvitedGame;
-  hostId = g.hostId;
-  realGameId = g.gameId;
-  isHost = false;
-} else {
-  const g = store.visibleGames[gameIdx] as HostedGame;
-  guestId = g.guestId;
+async function lockFleet(fleet: number[][]) {
+  const e = engagement.value;
+  if (!e || busy.value) return;
+  busy.value = true;
+  const ships = gridFromCells(fleet.flat());
+  try {
+    await write(
+      e.isHost
+        ? { config: { hostUnset: [], hostShips: ships, hostFleet: fleet }, status: { hostSetup: true } }
+        : { config: { guestUnset: [], guestShips: ships, guestFleet: fleet }, status: { guestSetup: true } },
+    );
+  } catch (err) {
+    console.log(err);
+    error.value = "Could not lock in your fleet. Check your connection and try again.";
+  } finally {
+    busy.value = false;
+  }
 }
 
-const shipSizeMap = {
-  carrier: 5,
-  battleship: 4,
-  destroyer: 3,
-  submarine: 3,
-  patrol_boat: 2,
-} as { [key: string]: number };
-
-const game: Ref<HostedGame> = ref({
-  id: realGameId,
-  visible: true,
-  lastActive: new Date().toISOString(),
-
-  type: HOSTED_GAME_TYPE,
-  guestId: guestId,
-  config: freshGameConfig(),
-  highscore: {
-    host: 0,
-    guest: 0,
-  },
-  status: {
-    currentTurn: "",
-    hostSetup: false,
-    guestSetup: false,
-    finished: false,
-  },
-});
-
-const selectedShip = ref("");
-const shipOrientation = ref("v" as "v" | "h");
-const currentRow = ref(-1);
-const currentCol = ref(-1);
-
-let unsubscribe: (() => Promise<string>) | undefined;
-let gameCollection: CollectionAPI<HostedGame>;
-
-const updateGame: SubscribeListener<HostedGame> = {
-  onAdd: (newGame) => {
-    game.value = newGame;
-  },
-  onChange: (oldGame, newGame) => {
-    game.value = newGame;
-    if (oldGame.status.finished && !newGame.status.finished && unsubscribe != undefined) {
-      // New game started -> cancel subscription
-      unsubscribe().then(() => {
-        unsubscribe = undefined;
+async function fire(i: number) {
+  const e = engagement.value;
+  const v = e?.view;
+  if (!e || !e.game || !v || e.phase !== "salvo" || pending.value !== null || isShot(v.myShots, i)) return;
+  pending.value = i;
+  const shots = v.myShots.map((row) => [...row]);
+  shots[Math.floor(i / SIZE)][i % SIZE] = true;
+  const log = [...v.myLog, i];
+  const finished = allSunk(v.theirShips, shots);
+  const status = { currentTurn: e.opponentId, finished };
+  try {
+    if (e.isHost) {
+      await write({
+        config: { hostBombs: shots, hostShotLog: log },
+        status,
+        ...(finished ? { highscore: { host: e.game.highscore.host + 1 } } : {}),
+      });
+    } else {
+      await write({
+        config: { guestBombs: shots, guestShotLog: log },
+        status,
+        ...(finished ? { highscore: { guest: e.game.highscore.guest + 1 } } : {}),
       });
     }
-  },
-};
-
-void (async () => {
-  const ctx = await bzr.createContext({ ownerId: hostId });
-  gameCollection = ctx.collection<HostedGame>(GAMES_COLLECTION_NAME);
-
-  try {
-    const g = await gameCollection.getOne(realGameId);
-    if (!g) {
-      console.log("failed game ID:", realGameId);
-      console.log("failed game host:", hostId);
-      return;
-    }
-    game.value = g;
-
-    // Subscribe to more if setup complete
-    if ((isHost && game.value.status.hostSetup) || (!isHost && game.value.status.guestSetup)) {
-      unsubscribe = await gameCollection.subscribeOne(realGameId, updateGame);
-    }
   } catch (err) {
-    console.log("Got error instead of game:", err);
+    console.log(err);
+    pending.value = null;
+    error.value = "That shot did not go through. Try again.";
   }
-})();
+}
 
-// 0: Empty
-// 1: Ship
-// 2: Ship placement (possible)
-// 3: Ship placement (impossible)
-const placementBoard: ComputedRef<number[][]> = computed(() => {
-  const r = currentRow.value; // Assignment required for reactivity
-  const c = currentCol.value; // Assignment required for reactivity
-  let ships = game.value.config.guestShips;
-  if (isHost) {
-    ships = game.value.config.hostShips;
+async function rematch() {
+  const e = engagement.value;
+  if (!e || busy.value) return;
+  busy.value = true;
+  try {
+    await store.rematch(e);
+  } catch (err) {
+    console.log(err);
+    error.value = "Could not start a new game. Try again.";
+  } finally {
+    busy.value = false;
   }
+}
 
-  let placements = {} as { [key: number]: { [key: number]: number } };
-  if (selectedShip.value != "") {
-    let possible = 2;
-    const size = shipSizeMap[selectedShip.value];
-    if (shipOrientation.value == "v") {
-      if (r > 10 - size) {
-        possible = 3;
-      }
-      for (let i = 0; i < size; i++) {
-        placements[r + i] = {};
-        placements[r + i][c] = possible;
-      }
-    } else {
-      if (c > 10 - size) {
-        possible = 3;
-      }
-      placements[r] = {};
-      for (let i = 0; i < size; i++) {
-        placements[r][c + i] = possible;
-      }
-    }
-  }
-
-  return ships.map((row: boolean[], ri: number) => {
-    return row.map((col, ci) => {
-      if (col) {
-        if (placements[ri] && placements[ri][ci]) {
-          return 3;
-        }
-        return 1;
-      } else {
-        if (placements[ri] && placements[ri][ci]) {
-          return placements[ri][ci];
-        }
-        return 0;
-      }
-    });
-  });
+// Each game of a series gets a fresh setup screen.
+const round = computed(() => {
+  const v = engagement.value?.view;
+  return v ? v.myScore + v.theirScore + (v.finished ? 0 : 1) : 1;
 });
-
-// 0: Empty
-// 1: Ship (unhit)
-// 2: Ship (hit)
-// 3: Bomb
-const shipBoard: ComputedRef<number[][]> = computed(() => {
-  let ships = game.value.config.guestShips;
-  let bombs = game.value.config.hostBombs;
-  if (isHost) {
-    ships = game.value.config.hostShips;
-    bombs = game.value.config.guestBombs;
-  }
-
-  return ships.map((row: boolean[], ri: number) => {
-    return row.map((col, ci) => {
-      if (col) {
-        if (bombs[ri][ci]) {
-          return 2;
-        }
-        return 1;
-      } else {
-        if (bombs[ri][ci]) {
-          return 3;
-        }
-        return 0;
-      }
-    });
-  });
-});
-
-// 0: Empty
-// 1: Bomb (no hit)
-// 2: Bomb (hit)
-const bombBoard: ComputedRef<number[][]> = computed(() => {
-  let ships = game.value.config.hostShips;
-  let bombs = game.value.config.guestBombs;
-  if (isHost) {
-    ships = game.value.config.guestShips;
-    bombs = game.value.config.hostBombs;
-  }
-  return bombs.map((row: boolean[], ri: number) => {
-    return row.map((col, ci) => {
-      if (col) {
-        if (ships[ri][ci]) {
-          return 2;
-        }
-        return 1;
-      } else {
-        return 0;
-      }
-    });
-  });
-});
-
-const unsetShips: ComputedRef<string[]> = computed(() => {
-  if (isHost) {
-    return game.value.config.hostUnset;
-  }
-  return game.value.config.guestUnset;
-});
-
-const setupComplete: ComputedRef<boolean> = computed(() => {
-  if (isHost) {
-    return game.value.status.hostSetup;
-  }
-  return game.value.status.guestSetup;
-});
-
-const opponentSetupComplete: ComputedRef<boolean> = computed(() => {
-  if (isHost) {
-    return game.value.status.guestSetup;
-  }
-  return game.value.status.hostSetup;
-});
-
-const myTurn: ComputedRef<boolean> = computed(() => {
-  return game.value.status.currentTurn == userId;
-});
-
-const unsetShipClass: (ship: string) => string = (ship) => {
-  if (ship == selectedShip.value) {
-    return "border-amber-700 bg-amber-700";
-  }
-  return "border-amber-500 bg-amber-500";
-};
-
-const selectUnsetShip: (ship: string) => void = (ship) => {
-  selectedShip.value = ship;
-};
-
-const mouseoverField: (ri: number, ci: number) => void = (ri, ci) => {
-  currentRow.value = ri;
-  currentCol.value = ci;
-};
-
-const mouseleaveBoard: () => void = () => {
-  currentRow.value = -1;
-  currentCol.value = -1;
-};
-
-const flipOrientation: (e: Event) => void = (e) => {
-  if (shipOrientation.value == "v") {
-    shipOrientation.value = "h";
-  } else {
-    shipOrientation.value = "v";
-  }
-  e.preventDefault();
-};
-
-const setShip: () => void = () => {
-  if (selectedShip.value == "") {
-    return;
-  }
-  const r = currentRow.value;
-  const c = currentCol.value;
-  const size = shipSizeMap[selectedShip.value];
-
-  let unset = game.value.config.guestUnset;
-  let ships = game.value.config.guestShips;
-  if (isHost) {
-    unset = game.value.config.hostUnset;
-    ships = game.value.config.hostShips;
-  }
-  if (shipOrientation.value == "v") {
-    if (r > 10 - size) {
-      return;
-    }
-    for (let i = 0; i < size; i++) {
-      if (ships[r + i][c]) {
-        // check for collision
-        return;
-      }
-    }
-    for (let i = 0; i < size; i++) {
-      ships[r + i][c] = true;
-    }
-  } else {
-    // orientation is "h"
-    if (c > 10 - size) {
-      return;
-    }
-    for (let i = 0; i < size; i++) {
-      // check for collision
-      if (ships[r][c + i]) {
-        return;
-      }
-    }
-    for (let i = 0; i < size; i++) {
-      ships[r][c + i] = true;
-    }
-  }
-  const index = unset.indexOf(selectedShip.value);
-  if (index > -1) {
-    unset.splice(index, 1);
-  }
-
-  if (isHost) {
-    game.value.config.hostShips = ships;
-    game.value.config.hostUnset = unset;
-  } else {
-    game.value.config.guestShips = ships;
-    game.value.config.guestUnset = unset;
-  }
-  // unselect ship
-  selectedShip.value = "";
-};
-
-// Must satisfy DeepPartial<HostedGame>
-type GameSetup =
-  | {
-      status: { guestSetup: true };
-      config: { guestUnset: string[]; guestShips: boolean[][] };
-    }
-  | {
-      status: { hostSetup: true };
-      config: { hostUnset: string[]; hostShips: boolean[][] };
-    };
-
-const completeSetup: () => void = () => {
-  let gameUpdate = {} as GameSetup;
-
-  if (isHost) {
-    gameUpdate["config"] = {
-      hostUnset: game.value.config.hostUnset,
-      hostShips: game.value.config.hostShips,
-    };
-    gameUpdate["status"] = { hostSetup: true };
-  } else {
-    // isGuest
-    gameUpdate["config"] = {
-      guestUnset: game.value.config.guestUnset,
-      guestShips: game.value.config.guestShips,
-    };
-    gameUpdate["status"] = { guestSetup: true };
-  }
-
-  // Update config and status
-  gameCollection
-    .updateOne(realGameId, gameUpdate)
-    .then(() => {
-      gameCollection
-        .subscribeOne(realGameId, updateGame)
-        .then((u) => {
-          unsubscribe = u;
-
-          // Update current game since other player might also have completed setup
-          gameCollection
-            .getOne(realGameId)
-            .then((g) => {
-              if (g) {
-                game.value = g;
-              }
-            })
-            .catch((err) => {
-              console.log("Got error instead of game:", err);
-            });
-        })
-        .catch((err) => {
-          console.log("Got error:", err);
-        });
-    })
-    .catch((err) => {
-      console.log("Got error:", err);
-    });
-};
-
-const disabledBomb: (ri: number, ci: number) => boolean = (ri, ci) => {
-  if (!myTurn.value) {
-    return true;
-  }
-  if (game.value.status.finished) {
-    return true;
-  }
-  if (bombBoard.value[ri][ci] > 0) {
-    return true;
-  }
-  return false;
-};
-
-const finishedGame: (ships: boolean[][], bombs: boolean[][]) => boolean = (ships, bombs) => {
-  for (const ri in ships) {
-    for (const ci in ships[ri]) {
-      if (ships[ri][ci] && !bombs[ri][ci]) {
-        return false;
-      }
-    }
-  }
-  return true;
-};
-
-const setBomb: (ri: number, ci: number) => void = (ri, ci) => {
-  if (disabledBomb(ri, ci)) {
-    // Sanity check
-    return;
-  }
-  if (isHost) {
-    game.value.config.hostBombs[ri][ci] = true;
-    game.value.status.currentTurn = guestId;
-    if (finishedGame(game.value.config.guestShips, game.value.config.hostBombs)) {
-      game.value.status.finished = true;
-      game.value.highscore.host += 1;
-    }
-  } else {
-    game.value.config.guestBombs[ri][ci] = true;
-    game.value.status.currentTurn = hostId;
-    if (finishedGame(game.value.config.hostShips, game.value.config.guestBombs)) {
-      game.value.status.finished = true;
-      game.value.highscore.guest += 1;
-    }
-  }
-
-  gameCollection.updateOne(game.value.id, game.value).catch((err) => {
-    console.log("Got error:", err);
-  });
-};
-
-const startNewGame: () => void = () => {
-  game.value.config = freshGameConfig();
-  game.value.status.hostSetup = false;
-  game.value.status.guestSetup = false;
-  game.value.status.finished = false;
-  gameCollection.updateOne(game.value.id, game.value).catch((err) => {
-    console.log("Got error:", err);
-  });
-};
 </script>
 
 <template>
-  <div class="max-w-5xl mx-auto text-center bg-neutral-400">
-    <div class="pt-4">
-      <div class="max-w-sm mx-auto p-4 bg-neutral-700 text-white">
-        <p class="font-semibold">High Score</p>
-        <p v-if="isHost">You ({{ game.highscore.host }}) - Opponent ({{ game.highscore.guest }})</p>
-        <p v-else>You ({{ game.highscore.guest }}) - Opponent ({{ game.highscore.host }})</p>
-      </div>
-    </div>
-
-    <!-- <p>Host: {{ game.host }} <span v-if="isHost">(you)</span></p>
-    <p>Guest: {{ game.guest.id }} <span v-if="!isHost">(you)</span></p>
-    <p>Turn: {{ game.status.currentTurn }}</p>
-    <p>Finished: {{ game.status.finished }}</p> -->
-    <div class="pt-4">
-      <div class="max-w-sm mx-auto p-4 bg-neutral-700 text-white">
-        <p class="font-semibold">Status</p>
-        <p v-if="!setupComplete">Set up your ships</p>
-        <p v-else-if="!opponentSetupComplete">Wait for opponent to set up ships</p>
-        <p v-else-if="game.status.finished">Game is finished</p>
-        <p v-else-if="myTurn">It is your turn</p>
-        <p v-else>Wait for opponent to play</p>
-      </div>
-    </div>
-
-    <div v-if="game.status.finished" class="pt-4">
-      <button class="border-2 border-amber-500 bg-amber-500 px-4 py-2 text-white font-semibold" @click="startNewGame()">
-        Start new game
-      </button>
-    </div>
-
-    <div class="py-4 text-white">
-      <div v-if="setupComplete" class="max-w-3xl mx-auto p-4 bg-neutral-700">
-        <div class="flex justify-center gap-4 flex-col md:flex-row">
-          <div>
-            <p class="font-semibold">Your ships</p>
-            <div class="inline-block border-2 border-amber-500">
-              <div v-for="(row, ri) in shipBoard" :key="ri" class="row">
-                <div v-for="(col, ci) in row" :key="ci" class="border-neutral-900 border" :class="'ship-' + col"></div>
-              </div>
-            </div>
-          </div>
-
-          <div v-if="opponentSetupComplete">
-            <p class="font-semibold">Your bombs</p>
-            <div class="inline-block border-2 border-amber-500">
-              <div v-for="(row, ri) in bombBoard" :key="ri" class="row">
-                <button
-                  v-for="(col, ci) in row"
-                  :key="ci"
-                  class="border-neutral-900 border"
-                  :class="'bomb-' + col"
-                  :disabled="disabledBomb(ri, ci)"
-                  @click="setBomb(ri, ci)"
-                ></button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div v-else class="max-w-3xl mx-auto p-4 bg-neutral-700 text-white">
-        <!-- Set up ships-->
-        <div v-if="unsetShips.length > 0" class="py-4">
-          <p>Choose a ship to place on board</p>
-          <button
-            v-for="s in unsetShips"
-            :key="s"
-            class="border-2 px-4 py-2 text-white font-semibold m-2"
-            :class="unsetShipClass(s)"
-            @click="selectUnsetShip(s)"
+  <div>
+    <div class="border-b border-sonar-line bg-sonar-panel">
+      <div class="mx-auto flex min-h-[56px] max-w-[1240px] flex-wrap items-center gap-x-5 gap-y-1 px-4 py-1.5 sm:px-6">
+        <RouterLink
+          :to="{ name: 'home' }"
+          class="inline-flex min-h-[44px] items-center gap-1.5 tracking-[0.1em] text-sonar-cyan no-underline hover:text-sonar-cyan-hi"
+        >
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            aria-hidden="true"
           >
-            {{ s }}
-          </button>
-          <p>Right click to rotate ship</p>
-        </div>
-        <div v-else class="py-4">
-          <button
-            class="border-2 border-amber-500 bg-amber-500 px-4 py-2 text-white font-semibold"
-            @click="completeSetup()"
+            <path d="M15 18l-6-6 6-6"></path>
+          </svg>
+          ENGAGEMENTS
+        </RouterLink>
+        <template v-if="engagement">
+          <span class="hd text-lg text-sonar-bright">vs {{ opponentName }}</span>
+          <span class="text-sonar-dim">
+            <template v-if="opponent?.handle">@{{ opponent.handle }} · </template>engagement {{ round }}
+          </span>
+          <span
+            v-if="engagement.phase === 'deploy'"
+            class="ml-auto inline-flex items-center gap-2"
+            :class="engagement.view?.opponentSetup ? 'text-sonar-cyan' : 'text-sonar-muted'"
           >
-            Start
-          </button>
-        </div>
-
-        <div class="inline-block border-2 border-amber-500" @mouseleave="mouseleaveBoard()">
-          <div v-for="(row, ri) in placementBoard" :key="ri" class="row">
-            <div
-              v-for="(col, ci) in row"
-              :key="ci"
-              class="border-neutral-900 border"
-              :class="'setup-' + col"
-              @mouseover="mouseoverField(ri, ci)"
-              @click="setShip()"
-              @contextmenu="flipOrientation($event)"
-            ></div>
-          </div>
-        </div>
+            <span
+              class="h-2 w-2 rounded-full"
+              :class="engagement.view?.opponentSetup ? 'bg-sonar-cyan shadow-[0_0_8px_#46E3D2]' : 'bg-sonar-edge'"
+            ></span>
+            {{ engagement.view?.opponentSetup ? "ENEMY FLEET DEPLOYED" : "ENEMY DEPLOYING" }}
+          </span>
+          <span
+            v-else-if="engagement.view"
+            class="ml-auto inline-flex items-baseline gap-2.5"
+            :aria-label="`Series score: you ${engagement.view.myScore}, ${opponentName} ${engagement.view.theirScore}`"
+          >
+            <span class="label">Series</span>
+            <span class="hd text-[22px] text-sonar-bright">
+              {{ pad2(engagement.view.myScore) }}–{{ pad2(engagement.view.theirScore) }}
+            </span>
+          </span>
+        </template>
       </div>
     </div>
+
+    <main class="mx-auto max-w-[1240px] px-4 pb-12 pt-6 sm:px-6">
+      <p v-if="error" role="alert" class="mb-4 mt-0 border border-sonar-flare px-4 py-3 text-sonar-flare-text">
+        {{ error }}
+      </p>
+
+      <section v-if="!engagement" class="panel mx-auto max-w-[560px]" role="status">
+        <template v-if="searching">
+          <h1 class="hd m-0 text-xl text-sonar-bright">Locating engagement…</h1>
+        </template>
+        <template v-else>
+          <h1 class="hd m-0 text-xl text-sonar-bright">Engagement not found</h1>
+          <p class="mb-4 text-sonar-muted">This game is hidden, was removed, or belongs to another account.</p>
+          <RouterLink :to="{ name: 'home' }" class="btn-outline">Back to engagements</RouterLink>
+        </template>
+      </section>
+
+      <section v-else-if="engagement.game === null" class="panel mx-auto max-w-[560px]">
+        <h1 class="hd m-0 text-xl text-sonar-bright">Game unavailable</h1>
+        <p class="mb-4 text-sonar-muted">{{ opponentName }} removed this game, or it is no longer shared with you.</p>
+        <RouterLink :to="{ name: 'home' }" class="btn-outline">Back to engagements</RouterLink>
+      </section>
+
+      <section v-else-if="!engagement.view || !engagement.phase" class="panel mx-auto max-w-[560px]" role="status">
+        <h1 class="hd m-0 text-xl text-sonar-bright">Establishing contact…</h1>
+      </section>
+
+      <FleetSetup
+        v-else-if="engagement.phase === 'deploy'"
+        :key="`setup-${round}`"
+        :opponent-name="opponentName"
+        :opponent-ready="engagement.view.opponentSetup"
+        :busy="busy"
+        @lock="lockFleet"
+      />
+
+      <BattleStation
+        v-else
+        :view="engagement.view"
+        :phase="engagement.phase"
+        :opponent-name="opponentName"
+        :pending="pending"
+        :busy="busy"
+        @fire="fire"
+        @rematch="rematch"
+      />
+    </main>
   </div>
 </template>
-
-<style scoped lang="scss">
-.row {
-  height: 30px;
-  display: grid;
-  grid-template-columns: 30px 30px 30px 30px 30px 30px 30px 30px 30px 30px;
-}
-
-.setup {
-  &-0 {
-    // Water
-    background-color: white;
-  }
-
-  &-1 {
-    // Ship
-    @apply bg-neutral-900;
-  }
-
-  &-2 {
-    // Possible
-    @apply bg-neutral-400;
-  }
-
-  &-3 {
-    // Impossible
-    @apply bg-red-600;
-  }
-}
-
-.ship {
-  &-0 {
-    // Water
-    background-color: white;
-  }
-
-  &-1 {
-    // Ship
-    @apply bg-neutral-900;
-  }
-
-  &-2 {
-    // Ship (hit)
-    @apply bg-red-600;
-  }
-
-  &-3 {
-    // Water (hit)
-    @apply bg-blue-700;
-  }
-}
-
-.bomb {
-  &-0 {
-    // Water
-    background-color: white;
-    &:hover {
-      @apply bg-red-600;
-    }
-
-    &:disabled {
-      @apply bg-neutral-100;
-      @apply border-neutral-300;
-    }
-  }
-
-  &-1 {
-    // Miss
-    @apply bg-neutral-300;
-    @apply border-neutral-300;
-  }
-
-  &-2 {
-    // Hit
-    @apply bg-neutral-900;
-  }
-}
-</style>

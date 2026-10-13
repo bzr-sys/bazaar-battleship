@@ -1,29 +1,33 @@
-import { ref, computed } from "vue";
+import { ref, computed, reactive, watch } from "vue";
 import type { ComputedRef } from "vue";
 import { defineStore } from "pinia";
 import { bzr } from "@/bazaar";
-import type { Game, GameType, HostedGame, InvitedGame } from "@/types/index";
+import type { Game, GameLink, GameType, HostedGame, InvitedGame } from "@/types/index";
+import { freshGameConfig, perspective, phaseOf } from "@/game";
+import type { Perspective, Phase } from "@/game";
 
 import { arrayMirrorSubscribeListener, GranteeType, PermissionType } from "@bzr/bazaar";
-import type { User, GrantedPermission } from "@bzr/bazaar";
+import type { CollectionAPI, DeepPartial, User, GrantedPermission } from "@bzr/bazaar";
 
 export const GAMES_COLLECTION_NAME = "games";
 export const HOSTED_GAME_TYPE = "hosted";
 export const INVITED_GAME_TYPE = "invited";
 export const LINK_GAME_TYPE = "link";
 
-export function freshGameConfig() {
-  const allShips = ["carrier", "battleship", "destroyer", "submarine", "patrol_boat"];
-  const allFalse = Array(10).fill(Array(10).fill(false));
-  return {
-    hostUnset: allShips,
-    guestUnset: allShips,
-    hostShips: allFalse,
-    guestShips: allFalse,
-    hostBombs: allFalse,
-    guestBombs: allFalse,
-  };
-}
+export { freshGameConfig };
+
+/** A game as the signed-in user sees it, whichever database it lives in. */
+export type Engagement = {
+  /** The entry's ID in the user's own games collection (used in the URL). */
+  id: string;
+  entry: HostedGame | InvitedGame;
+  /** The live game: undefined while loading, null if it can no longer be read. */
+  game: HostedGame | null | undefined;
+  isHost: boolean;
+  opponentId: string;
+  view?: Perspective;
+  phase?: Phase;
+};
 
 export const useBazaarStore = defineStore("bazaar", () => {
   const loaded = ref(false);
@@ -34,29 +38,90 @@ export const useBazaarStore = defineStore("bazaar", () => {
     name: "",
   } as User);
   const games = ref([] as Game[]);
-  const invitedGames: ComputedRef<InvitedGame[]> = computed(
-    () => games.value.filter((g: Game) => g && g.type === INVITED_GAME_TYPE) as InvitedGame[],
-  );
-  const visibleGames = computed(() => {
-    const visible = games.value.filter((g) => g && g.visible);
-    for (const v of visible) {
-      if (!v.name) {
-        if (v.type === HOSTED_GAME_TYPE) {
-          bzr.social.getUser({ userId: v.guestId }).then((u: User) => {
-            v.name = u.name;
-          });
-        }
-        if (v.type === INVITED_GAME_TYPE) {
-          bzr.social.getUser({ userId: v.hostId }).then((u: User) => {
-            v.name = u.name;
-          });
-        }
-      }
-    }
-    return visible.sort((a: Game, b: Game) => Date.parse(b.lastActive) - Date.parse(a.lastActive));
-  });
+  const people = reactive({} as Record<string, User | null>);
+
+  // Invited games live in the host's database: entry ID -> live copy.
+  const remote = reactive({} as Record<string, HostedGame | null>);
+  const remoteCollections = new Map<string, CollectionAPI<HostedGame>>();
 
   const gamesCollection = bzr.collection<Game>(GAMES_COLLECTION_NAME);
+
+  function ensurePerson(userId: string) {
+    if (!userId || userId in people) return;
+    people[userId] = null;
+    bzr.social
+      .getUser({ userId })
+      .then((u: User) => {
+        people[userId] = u;
+      })
+      .catch((err) => console.log("Could not load user", userId, err));
+  }
+
+  async function watchRemote(entry: InvitedGame) {
+    if (remoteCollections.has(entry.id)) return;
+    try {
+      const ctx = await bzr.createContext({ ownerId: entry.hostId });
+      const c = ctx.collection<HostedGame>(GAMES_COLLECTION_NAME);
+      remoteCollections.set(entry.id, c);
+      await c.subscribeOne(entry.gameId, {
+        onInitial: (doc) => {
+          remote[entry.id] = doc;
+        },
+        onAdd: (doc) => {
+          remote[entry.id] = doc;
+        },
+        onChange: (_old, doc) => {
+          remote[entry.id] = doc;
+        },
+        onDelete: () => {
+          remote[entry.id] = null;
+        },
+      });
+      if (!(entry.id in remote)) remote[entry.id] = null;
+    } catch (err) {
+      console.log("Could not load game from", entry.hostId, err);
+      remote[entry.id] = null;
+    }
+  }
+
+  const engagements: ComputedRef<Engagement[]> = computed(() => {
+    const out: Engagement[] = [];
+    for (const g of games.value) {
+      if (!g || !g.visible) continue;
+      if (g.type === HOSTED_GAME_TYPE) {
+        out.push({ id: g.id, entry: g, game: g, isHost: true, opponentId: g.guestId });
+      } else if (g.type === INVITED_GAME_TYPE) {
+        out.push({ id: g.id, entry: g, game: remote[g.id], isHost: false, opponentId: g.hostId });
+      }
+    }
+    for (const e of out) {
+      if (e.game && e.game.config && e.game.status) {
+        e.view = perspective(e.game, e.isHost, user.value.id);
+        e.phase = phaseOf(e.view);
+      }
+    }
+    return out;
+  });
+
+  const links = computed(() => games.value.filter((g) => g && g.visible && g.type === LINK_GAME_TYPE) as GameLink[]);
+
+  // Keep remote games and opponent names loaded for everything in the lobby.
+  watch(
+    () => games.value.map((g) => g && `${g.id}:${g.type}`).join(),
+    () => {
+      for (const g of games.value) {
+        if (!g) continue;
+        if (g.type === INVITED_GAME_TYPE) {
+          ensurePerson(g.hostId);
+          watchRemote(g);
+        } else if (g.type === HOSTED_GAME_TYPE) {
+          ensurePerson(g.guestId);
+        }
+      }
+    },
+  );
+
+  const invitedGames = computed(() => games.value.filter((g) => g && g.type === INVITED_GAME_TYPE) as InvitedGame[]);
 
   async function checkGranted(g: GrantedPermission) {
     if (
@@ -109,8 +174,11 @@ export const useBazaarStore = defineStore("bazaar", () => {
     }
   }
 
+  let signingIn = false;
   async function autoSignIn() {
     if (bzr.isLoggedIn()) {
+      if (signingIn || authenticated.value) return;
+      signingIn = true;
       try {
         user.value = await bzr.social.getUser();
         authenticated.value = true;
@@ -136,6 +204,8 @@ export const useBazaarStore = defineStore("bazaar", () => {
         loaded.value = true;
       } catch (e: unknown) {
         console.error("Error during auto signin", e);
+      } finally {
+        signingIn = false;
       }
     } else {
       loaded.value = true;
@@ -162,7 +232,7 @@ export const useBazaarStore = defineStore("bazaar", () => {
       },
     } as Omit<HostedGame, "id">;
     const gameId = await gamesCollection.insertOne(game);
-    bzr.permissions.create({
+    await bzr.permissions.create({
       collectionName: GAMES_COLLECTION_NAME,
       granteeType: GranteeType.USER,
       granteeId: userId,
@@ -171,6 +241,7 @@ export const useBazaarStore = defineStore("bazaar", () => {
         id: gameId,
       },
     });
+    return gameId;
   }
 
   async function createLink() {
@@ -178,9 +249,6 @@ export const useBazaarStore = defineStore("bazaar", () => {
       type: LINK_GAME_TYPE as GameType,
       visible: true,
       lastActive: "$now",
-      // link game specific
-      // linkId: "",
-      // linkUrl: ""
     };
     const gameId = await gamesCollection.insertOne(game);
     const link = await bzr.permissions.links.create(
@@ -194,13 +262,50 @@ export const useBazaarStore = defineStore("bazaar", () => {
       "Link for new game",
       1,
     );
-    gamesCollection.updateOne(gameId, { linkId: link.id, linkUrl: link.url });
+    await gamesCollection.updateOne(gameId, { linkId: link.id, linkUrl: link.url });
     return link.url;
   }
 
   async function hideGame(gameId: string) {
-    gamesCollection.updateOne(gameId, { visible: false });
+    await gamesCollection.updateOne(gameId, { visible: false });
   }
 
-  return { loaded, authenticated, user, visibleGames, autoSignIn, createGame, createLink, hideGame };
+  /** Writes a partial update to the game behind an engagement, wherever it lives. */
+  async function updateGame(e: Engagement, update: DeepPartial<HostedGame>) {
+    if (e.isHost) {
+      await gamesCollection.updateOne(e.entry.id, update as DeepPartial<Game>);
+      return;
+    }
+    const entry = e.entry as InvitedGame;
+    const c = remoteCollections.get(entry.id);
+    if (!c) throw new Error("This game is not loaded yet");
+    await c.updateOne(entry.gameId, update);
+    // Bring the invited entry to the top of the host's lobby order too.
+    gamesCollection.updateOne(entry.id, { lastActive: "$now" }).catch(() => {});
+  }
+
+  /** Starts the next game of the series. The loser of the last one fires first. */
+  async function rematch(e: Engagement) {
+    await updateGame(e, {
+      lastActive: "$now",
+      config: freshGameConfig(),
+      status: { hostSetup: false, guestSetup: false, finished: false },
+    });
+  }
+
+  return {
+    loaded,
+    authenticated,
+    user,
+    games,
+    people,
+    engagements,
+    links,
+    autoSignIn,
+    createGame,
+    createLink,
+    hideGame,
+    updateGame,
+    rematch,
+  };
 });
