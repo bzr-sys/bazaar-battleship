@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@bzr/bazaar':
-        specifier: 1.6.0
-        version: 1.6.0
+        specifier: 1.7.0
+        version: 1.7.0
       pinia:
         specifier: ^2.1.7
         version: 2.3.1(typescript@5.2.2)(vue@3.5.35(typescript@5.2.2))
@@ -111,12 +111,12 @@ packages:
     engines: {node: '>=24.0.0'}
     hasBin: true
 
-  '@bzr/bazaar-types@1.6.0':
-    resolution: {integrity: sha512-t/nis4KOsLRW/lIuww0tBJDW9JwplWRfW2i4POfRMACk7L4amGCpRUG76XS0em/PQ+tgXtyQ81sXunuBbSJ+5w==}
+  '@bzr/bazaar-types@1.7.0':
+    resolution: {integrity: sha512-aipsbLGVfnovWWoYbmI6MpdJGi5/z8K7NJbTGr5n1Py4aA2PpAF0bqaIDHfSIgJ+gy47UPfmp1Ib63mJdMWemg==}
     engines: {node: '>=24.0.0'}
 
-  '@bzr/bazaar@1.6.0':
-    resolution: {integrity: sha512-GDd6MffjJEfwGepxLAjKpM/qw2ADQFnUQMEw9UPVuolUWWmoCk2k5p6hDHfQny7CqT+Nsrxz5jxt+peU3itKOw==}
+  '@bzr/bazaar@1.7.0':
+    resolution: {integrity: sha512-aoyRiQuTzXCIVbYyICAsQv/RBMnSo5BdY4KwnMljbFQJaHdhYjvfYnsEFBg3Vu+mczCq3TyZRje+Zy09PIF4mA==}
     engines: {node: '>=24.0.0'}
 
   '@esbuild/android-arm64@0.18.20':
@@ -1997,12 +1997,12 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@bzr/bazaar-types@1.6.0': {}
+  '@bzr/bazaar-types@1.7.0': {}
 
-  '@bzr/bazaar@1.6.0':
+  '@bzr/bazaar@1.7.0':
     dependencies:
       '@badgateway/oauth2-client': 3.3.1
-      '@bzr/bazaar-types': 1.6.0
+      '@bzr/bazaar-types': 1.7.0
       socket.io-client: 4.8.3
     transitivePeerDependencies:
       - bufferutil
